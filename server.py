@@ -233,9 +233,12 @@ def index():
 
 @app.route("/sw.js")
 def sw_root():
-    return send_from_directory(app.static_folder, "sw.js")
-
-
+    # Importantíssimo: SW não pode ficar "preso" em cache do navegador/CDN
+    resp = send_from_directory(app.static_folder, "sw.js")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 @app.route("/api/health")
 def health():
     return jsonify({"ok": True, "time": datetime.utcnow().isoformat()})
