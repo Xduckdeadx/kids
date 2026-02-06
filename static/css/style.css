@@ -308,9 +308,14 @@ input,select,textarea{font-family:inherit}
 .modal{
   position:fixed; inset:0;
   background:rgba(2,6,23,.62);
-  display:flex; align-items:center; justify-content:center;
+  /* Allow scrolling when modal content is taller than viewport (mobile/small screens) */
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
   z-index:9999;
   padding:18px;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
 }
 .modal-card{
   width:min(720px, 96vw);
@@ -319,18 +324,30 @@ input,select,textarea{font-family:inherit}
   border-radius:18px;
   box-shadow:var(--shadow);
   overflow:hidden;
+
+  /* Make the card fit on screen and let body scroll */
+  max-height:calc(100vh - 36px);
+  display:flex;
+  flex-direction:column;
 }
 .modal-head{
   padding:14px 16px;
   display:flex; align-items:center; justify-content:space-between; gap:12px;
   border-bottom:1px solid var(--border);
+  flex:0 0 auto;
 }
 .modal-title{font-weight:900}
-.modal-body{padding:16px}
+.modal-body{
+  padding:16px;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  flex:1 1 auto;
+}
 .modal-foot{
   padding:14px 16px;
   border-top:1px solid var(--border);
   display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;
+  flex:0 0 auto;
 }
 .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
 .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px}
