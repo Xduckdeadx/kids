@@ -500,13 +500,15 @@ const APP = {
     `;
 
     // load equipe + alunos
-    const [equipe, alunos] = await Promise.all([
-      apiFetch("/usuarios").catch(() => ({ ok: true, usuarios: [] })),
-      apiFetch("/alunos").catch(() => ({ ok: true, alunos: [] })),
-    ]);
+const [equipeResp, alunosResp] = await Promise.all([
+  apiFetch("/usuarios").catch(() => []),
+  apiFetch("/alunos").catch(() => []),
+]);
 
-    const usuarios = equipe?.usuarios || [];
-    const alunosList = alunos?.alunos || [];
+// backend retorna ARRAY direto (ex: [{...}]). Se algum dia voltar a retornar objeto, ainda suportamos.
+const usuarios = Array.isArray(equipeResp) ? equipeResp : (equipeResp?.usuarios || []);
+const alunosList = Array.isArray(alunosResp) ? alunosResp : (alunosResp?.alunos || []);
+
 
     const selProf = $("#aula-prof");
     const selAux = $("#aula-aux");
