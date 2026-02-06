@@ -501,13 +501,12 @@ const APP = {
 
     // load equipe + alunos
     const [equipe, alunos] = await Promise.all([
-      apiFetch("/usuarios").catch(() => []),
-      apiFetch("/alunos").catch(() => []),
+      apiFetch("/usuarios").catch(() => ({ ok: true, usuarios: [] })),
+      apiFetch("/alunos").catch(() => ({ ok: true, alunos: [] })),
     ]);
 
-    // Backward compat: algumas versões antigas retornavam {usuarios:[...]} / {alunos:[...]}
-    const usuarios = Array.isArray(equipe) ? equipe : (equipe?.usuarios || []);
-    const alunosList = Array.isArray(alunos) ? alunos : (alunos?.alunos || []);
+    const usuarios = equipe?.usuarios || [];
+    const alunosList = alunos?.alunos || [];
 
     const selProf = $("#aula-prof");
     const selAux = $("#aula-aux");
@@ -530,12 +529,9 @@ const APP = {
       const tema = ($("#aula-tema")?.value || "").trim();
       const professor = selProf?.value || "";
       const auxiliar = selAux?.value || "Nenhum";
-      const btn = $("#btn-iniciar-aula");
       if (!tema) return toast("Digite o tema da aula.", "warn");
-      if (!professor) return toast("Selecione um professor(a).", "warn");
 
       try {
-        if (btn) { btn.disabled = true; btn.innerText = "Iniciando..."; }
         await apiFetch("/aulas/iniciar", {
           method: "POST",
           body: JSON.stringify({ tema, professor, auxiliar })
@@ -543,12 +539,7 @@ const APP = {
         toast("Aula iniciada ✅", "ok");
         await this.refreshAulaAtivaUI();
       } catch (e) {
-        const det = (e && e.payload && typeof e.payload === "object" && (e.payload.details || e.payload.error))
-          ? `\n${e.payload.details || e.payload.error}`
-          : "";
-        toast((e.message || "Falha ao iniciar aula") + det, "err");
-      } finally {
-        if (btn) { btn.disabled = false; btn.innerText = "Iniciar aula"; }
+        toast(e.message || "Falha ao iniciar aula", "err");
       }
     });
 
