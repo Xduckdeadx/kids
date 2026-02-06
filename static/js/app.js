@@ -1692,9 +1692,35 @@ window.APP = APP;
 
 /* start */
 document.addEventListener("DOMContentLoaded", () => {
-  // registra SW sem travar
+  // Service Worker: força checar atualização e aplicar sem "bug fantasma" de cache
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    navigator.serviceWorker.register("/sw.js").then((reg) => {
+      // força o browser a buscar versão nova do SW
+      reg.update().catch(() => {});
+
+      // se tiver um SW novo esperando, manda assumir já
+      if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+
+      reg.addEventListener("updatefound", () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener("statechange", () => {
+          // quando o novo SW ficar pronto, aplica e recarrega
+          if (nw.state === "installed" && navigator.serviceWorker.controller) {
+            nw.postMessage({ type: "SKIP_WAITING" });
+          }
+        });
+      });
+    }).catch(() => {});
+
+    // quando o SW trocar, recarrega pra pegar arquivos novos
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      // evita loop de reload
+      if (window.__swReloaded) return;
+      window.__swReloaded = true;
+      window.location.reload();
+    });
   }
+
   APP.boot();
 });
