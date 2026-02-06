@@ -501,23 +501,28 @@ const APP = {
 
     // load equipe + alunos
     const [equipe, alunos] = await Promise.all([
-      apiFetch("/usuarios").catch(() => ({ ok: true, usuarios: [] })),
-      apiFetch("/alunos").catch(() => ({ ok: true, alunos: [] })),
+      apiFetch("/usuarios").catch(() => ([])),
+      apiFetch("/alunos").catch(() => ([])),
     ]);
 
-    const usuarios = equipe?.usuarios || [];
-    const alunosList = alunos?.alunos || [];
+    // ✅ Backend retorna ARRAY (ex: [{...}, {...}]) e não {usuarios:[...]}
+    const usuariosAll = Array.isArray(equipe) ? equipe : (equipe?.usuarios || []);
+    const alunosList = Array.isArray(alunos) ? alunos : (alunos?.alunos || []);
+
+    // filtros (evita sumir todo mundo por role divergente)
+    const professores = usuariosAll.filter(u => ["professor", "admin"].includes((u.role || "").toLowerCase()));
+    const auxiliares = usuariosAll.filter(u => ["auxiliar", "professor", "admin"].includes((u.role || "").toLowerCase()));
 
     const selProf = $("#aula-prof");
     const selAux = $("#aula-aux");
     const selEntrada = $("#entrada-aluno");
 
     if (selProf) {
-      selProf.innerHTML = usuarios.map(u => `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`).join("") || `<option value="">(Sem equipe cadastrada)</option>`;
+      selProf.innerHTML = professores.map(u => `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`).join("") || `<option value="">(Sem equipe cadastrada)</option>`;
     }
     if (selAux) {
       const opts = [`<option value="Nenhum">Nenhum</option>`].concat(
-        usuarios.map(u => `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`)
+        auxiliares.map(u => `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`)
       );
       selAux.innerHTML = opts.join("");
     }
@@ -1692,35 +1697,9 @@ window.APP = APP;
 
 /* start */
 document.addEventListener("DOMContentLoaded", () => {
-  // Service Worker: força checar atualização e aplicar sem "bug fantasma" de cache
+  // registra SW sem travar
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js").then((reg) => {
-      // força o browser a buscar versão nova do SW
-      reg.update().catch(() => {});
-
-      // se tiver um SW novo esperando, manda assumir já
-      if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
-
-      reg.addEventListener("updatefound", () => {
-        const nw = reg.installing;
-        if (!nw) return;
-        nw.addEventListener("statechange", () => {
-          // quando o novo SW ficar pronto, aplica e recarrega
-          if (nw.state === "installed" && navigator.serviceWorker.controller) {
-            nw.postMessage({ type: "SKIP_WAITING" });
-          }
-        });
-      });
-    }).catch(() => {});
-
-    // quando o SW trocar, recarrega pra pegar arquivos novos
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      // evita loop de reload
-      if (window.__swReloaded) return;
-      window.__swReloaded = true;
-      window.location.reload();
-    });
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
-
   APP.boot();
 });
