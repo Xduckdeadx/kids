@@ -2,236 +2,179 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Kid IEQ 2026 • IEQ Central</title>
+  <title>Kid IEQ 2026</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#3f7df4" />
 
   <!-- PWA -->
   <link rel="manifest" href="/static/manifest.json" />
-  <meta name="theme-color" content="#3b82f6" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-
-  <!-- Ícones -->
-  <link rel="icon" href="/static/images/icon-192.png" />
   <link rel="apple-touch-icon" href="/static/images/icon-192.png" />
 
-  <!-- CSS (cache-bust) -->
+  <!-- CSS -->
   <link rel="stylesheet" href="/static/css/style.css" />
 
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f6fb;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,.08);
+      padding: 24px;
+      max-width: 420px;
+      margin: auto;
+    }
+
+    h1 {
+      margin-top: 0;
+      text-align: center;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      font-size: 15px;
+    }
+
+    button {
+      background: #3f7df4;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    #login-msg {
+      margin-top: 10px;
+      color: red;
+      text-align: center;
+    }
+
+    /* Loading */
+    .loading {
+      position: fixed;
+      inset: 0;
+      background: #f4f6fb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    .loading-box {
+      background: #fff;
+      padding: 32px;
+      border-radius: 20px;
+      text-align: center;
+      width: 320px;
+      box-shadow: 0 10px 25px rgba(0,0,0,.1);
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #ddd;
+      border-top-color: #3f7df4;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* App */
+    #app {
+      display: none;
+      padding: 24px;
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+  </style>
 </head>
 <body>
 
-  <!-- LOADING -->
- <div id="loading" class="loading">
-    <div class="loading-card">
-      <div class="spinner"></div>
-      <h2>Kid IEQ 2026</h2>
-      <p class="muted">IEQ Central • Ministério Infantil</p>
-      <p id="loading-status" class="muted">Iniciando...</p>
-    </div>
+<!-- LOADING -->
+<div id="loading" class="loading">
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <h2>Kid IEQ 2026</h2>
+    <p>IEQ Central • Ministério Infantil</p>
+    <strong>Iniciando...</strong>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="login" class="card" style="display:none; margin-top:80px;">
+  <h1>Entrar</h1>
+
+  <input
+    id="login-user"
+    type="text"
+    placeholder="Usuário"
+    autocomplete="username"
+  />
+
+  <input
+    id="login-pass"
+    type="password"
+    placeholder="Senha"
+    autocomplete="current-password"
+  />
+
+  <button id="btn-login">Entrar</button>
+
+  <div id="login-msg"></div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="top">
+    <h2>IEQ Central</h2>
+    <button onclick="Auth.logout()">Sair</button>
   </div>
 
-  <!-- LOGIN -->
-  <div id="login" class="screen" style="display:none;">
-    <div class="login-wrap">
-      <div class="login-card">
-        <div class="login-brand">
-          <div class="brand-icon"><i class="fa-solid fa-church"></i></div>
-          <div>
-            <div class="brand-title">Kid IEQ 2026</div>
-            <div class="brand-sub">Sistema de Gestão • Ministério Infantil</div>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Usuário</label>
-          <input id="login-user" autocomplete="username" placeholder="Digite seu usuário" />
-        </div>
-
-        <div class="field">
-          <label>Senha</label>
-          <input id="login-pass" type="password" autocomplete="current-password" placeholder="Digite sua senha" />
-        </div>
-
-        <div id="login-msg" class="hint" style="min-height:18px;"></div>
-
-        <button id="btn-login" class="btn btn-primary btn-block">
-          <i class="fa-solid fa-right-to-bracket"></i> Entrar
-        </button>
-
-        <div class="login-foot">
-          <div class="muted">Dica: no celular, use “Adicionar à tela inicial” para instalar o app.</div>
-        </div>
-      </div>
-    </div>
+  <div class="card">
+    <h3>Bem-vindo 👋</h3>
+    <p>O sistema está ativo e pronto para uso.</p>
+    <p>
+      Agora você já pode:
+      <ul>
+        <li>Iniciar aulas</li>
+        <li>Fazer check-in de alunos</li>
+        <li>Consultar histórico</li>
+      </ul>
+    </p>
   </div>
+</div>
 
-  <!-- APP -->
-  <div id="app" class="app" style="display:none;">
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
-      <div class="side-top">
-        <div class="side-user">
-          <div class="avatar" id="user-avatar"><i class="fa-solid fa-user"></i></div>
-          <div class="u-meta">
-            <div id="user-name" class="u-name">Usuário</div>
-            <div id="user-role" class="u-role">membro</div>
-          </div>
-        </div>
-      </div>
+<!-- JS -->
+<script src="/static/js/app.js"></script>
 
-      <nav class="side-nav">
-        <button class="side-item active" data-page="home"><i class="fa-solid fa-house"></i> Início</button>
-        <button class="side-item" data-page="alunos"><i class="fa-solid fa-child"></i> Alunos</button>
-        <button class="side-item" data-page="equipe"><i class="fa-solid fa-users"></i> Equipe</button>
-        <button class="side-item" data-page="mural"><i class="fa-solid fa-bullhorn"></i> Mural</button>
-        <button class="side-item" data-page="aulas"><i class="fa-solid fa-chalkboard-teacher"></i> Aulas</button>
-        <button class="side-item" data-page="historico"><i class="fa-solid fa-clock-rotate-left"></i> Histórico</button>
-        <button class="side-item" data-page="config"><i class="fa-solid fa-gear"></i> Configurações</button>
-      </nav>
+<!-- Service Worker -->
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js");
+  }
+</script>
 
-      <div class="side-bottom">
-        <div class="muted small">Kid IEQ 2026 • IEQ Central</div>
-      </div>
-    </aside>
-
-    <!-- MAIN -->
-    <main class="main">
-      <!-- TOPBAR -->
-      <header class="topbar">
-        <div class="top-left">
-          <button id="btn-toggle-side" class="iconbtn" title="Menu">
-            <i class="fa-solid fa-bars"></i>
-          </button>
-          <div class="titles">
-            <div id="page-title" class="page-title">Início</div>
-            <div id="page-sub" class="page-sub">Resumo do sistema</div>
-          </div>
-        </div>
-
-        <div class="top-right">
-          <button id="btn-sync" class="iconbtn" title="Atualizar">
-            <i class="fa-solid fa-rotate"></i>
-          </button>
-          <button id="btn-theme" class="iconbtn" title="Tema">
-            <i class="fa-solid fa-moon"></i>
-          </button>
-          <button id="btn-logout" class="iconbtn danger" title="Sair">
-            <i class="fa-solid fa-right-from-bracket"></i>
-          </button>
-        </div>
-      </header>
-
-      <!-- PAGES -->
-      <section id="page-home" class="page">
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-ico"><i class="fa-solid fa-child"></i></div>
-            <div class="stat-val" id="stat-alunos">0</div>
-            <div class="stat-lbl">Alunos</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-ico"><i class="fa-solid fa-users"></i></div>
-            <div class="stat-val" id="stat-equipe">0</div>
-            <div class="stat-lbl">Equipe</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-ico"><i class="fa-solid fa-bullhorn"></i></div>
-            <div class="stat-val" id="stat-avisos">0</div>
-            <div class="stat-lbl">Avisos</div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Avisos fixados</div>
-          <div id="home-pinned" class="list"></div>
-        </div>
-
-        <div class="grid3" style="margin-top:14px;">
-          <button class="btn btn-outline" onclick="APP.go('alunos')">
-            <i class="fa-solid fa-child"></i> Alunos
-          </button>
-          <button class="btn btn-outline" onclick="APP.go('equipe')">
-            <i class="fa-solid fa-users"></i> Equipe
-          </button>
-          <button class="btn btn-primary" onclick="APP.go('aulas')">
-            <i class="fa-solid fa-chalkboard-teacher"></i> Iniciar aula
-          </button>
-        </div>
-      </section>
-
-      <section id="page-alunos" class="page" style="display:none;">
-        <div class="toolbar">
-          <input id="q-alunos" placeholder="Buscar aluno..." />
-          <button id="btn-buscar-alunos" class="btn btn-outline"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
-          <button id="btn-novo-aluno" class="btn btn-success"><i class="fa-solid fa-plus"></i> Novo</button>
-        </div>
-        <div id="list-alunos" class="list"></div>
-      </section>
-
-      <section id="page-equipe" class="page" style="display:none;">
-        <div class="toolbar">
-          <input id="q-users" placeholder="Buscar membro..." />
-          <button id="btn-buscar-users" class="btn btn-outline"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
-          <button id="btn-novo-user" class="btn btn-success"><i class="fa-solid fa-plus"></i> Novo</button>
-        </div>
-        <div id="equipe-hint" class="hint"></div>
-        <div id="list-users" class="list"></div>
-      </section>
-
-      <section id="page-mural" class="page" style="display:none;">
-        <div class="toolbar">
-          <button id="btn-novo-aviso" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Novo aviso</button>
-        </div>
-        <div id="list-avisos" class="list"></div>
-      </section>
-
-      <section id="page-aulas" class="page" style="display:none;"></section>
-      <section id="page-historico" class="page" style="display:none;"></section>
-
-      <section id="page-config" class="page" style="display:none;">
-        <div class="card config">
-          <div class="config-row">
-            <div>
-              <div class="cfg-title">Tema escuro</div>
-              <div class="cfg-sub">Ativar/desativar o modo escuro</div>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="dark-toggle" />
-              <span class="slider"></span>
-            </label>
-          </div>
-
-          <div class="config-row">
-            <div>
-              <div class="cfg-title">Sobre</div>
-              <div class="cfg-sub">Informações do aplicativo</div>
-            </div>
-            <button id="btn-about" class="btn btn-outline"><i class="fa-solid fa-circle-info"></i> Abrir</button>
-          </div>
-
-          <div class="config-row">
-            <div>
-              <div class="cfg-title">Limpar cache local</div>
-              <div class="cfg-sub">Remove dados do navegador (não apaga servidor)</div>
-            </div>
-            <button id="btn-clear" class="btn btn-outline"><i class="fa-solid fa-trash"></i> Limpar</button>
-          </div>
-        </div>
-      </section>
-
-      <footer class="footer">
-        <small>© 2026 IEQ Central • Kid IEQ 2026</small>
-      </footer>
-    </main>
-  </div>
-
-  <!-- MODAL ROOT -->
-  <div id="modal-root"></div>
-
-  <!-- JS (cache-bust) -->
-  <script src="/static/js/app.js"></script>
 </body>
 </html>
