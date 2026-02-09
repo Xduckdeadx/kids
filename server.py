@@ -205,31 +205,8 @@ def ensure_tables():
     cur.execute("ALTER TABLE frequencia ADD COLUMN IF NOT EXISTS horario_saida TIMESTAMP")
     cur.execute("ALTER TABLE frequencia ADD COLUMN IF NOT EXISTS retirado_por TEXT")
 
-# Se o banco foi criado com TIME, converte para TIMESTAMP (evita bug no app)
-try:
-    cur.execute("""
-        SELECT data_type
-        FROM information_schema.columns
-        WHERE table_name='frequencia' AND column_name='horario_entrada'
-    """)
-    t1 = (cur.fetchone() or {}).get("data_type")
-    if t1 and t1.lower() == "time without time zone":
-        cur.execute("ALTER TABLE frequencia ALTER COLUMN horario_entrada TYPE TIMESTAMP USING (CURRENT_DATE + horario_entrada)")
 
-    cur.execute("""
-        SELECT data_type
-        FROM information_schema.columns
-        WHERE table_name='frequencia' AND column_name='horario_saida'
-    """)
-    t2 = (cur.fetchone() or {}).get("data_type")
-    if t2 and t2.lower() == "time without time zone":
-        cur.execute("ALTER TABLE frequencia ALTER COLUMN horario_saida TYPE TIMESTAMP USING (CASE WHEN horario_saida IS NULL THEN NULL ELSE (CURRENT_DATE + horario_saida) END)")
-except Exception:
-    pass
-
-
-
-# seed admin
+    # seed admin
     cur.execute("SELECT id FROM usuarios WHERE usuario='admin'")
     if not cur.fetchone():
         cur.execute(
@@ -1031,38 +1008,22 @@ def aulas_entrada():
         return api_error("Erro ao dar entrada", 500, e)
 
 
-
 @app.post("/api/aulas/saida")
 @require_auth
 def aulas_saida():
-    """Checkout: marca saída e (opcionalmente) quem retirou.
-    Aceita:
-      - frequencia_id
-      - ou aula_id + aluno_id
-    """
+    """Checkout seguro: marca saída e quem retirou."""
     try:
         body = request.get_json(force=True, silent=True) or {}
         frequencia_id = body.get("frequencia_id")
-        aula_id = body.get("aula_id")
-        aluno_id = body.get("aluno_id")
-        retirado_por = (body.get("retirado_por") or "").strip() or None
+        retirado_por = (body.get("retirado_por") or "").strip()
+
+        if not frequencia_id:
+            return api_error("frequencia_id é obrigatório", 400)
+        if not retirado_por:
+            return api_error("retirado_por é obrigatório", 400)
 
         conn = db()
         cur = conn.cursor()
-
-        if not frequencia_id:
-            if not aula_id or not aluno_id:
-                cur.close()
-                conn.close()
-                return api_error("Informe frequencia_id ou (aula_id e aluno_id)", 400)
-            cur.execute("SELECT id FROM frequencia WHERE id_aula=%s AND id_aluno=%s", (aula_id, aluno_id))
-            row = cur.fetchone()
-            if not row:
-                cur.close()
-                conn.close()
-                return api_error("Registro de frequência não encontrado", 404)
-            frequencia_id = row["id"]
-
         cur.execute(
             "UPDATE frequencia SET horario_saida = NOW(), retirado_por = %s WHERE id = %s",
             (retirado_por, frequencia_id),
@@ -1070,96 +1031,10 @@ def aulas_saida():
         conn.commit()
         cur.close()
         conn.close()
-        return jsonify({"ok": True, "frequencia_id": frequencia_id})
+        return jsonify({"ok": True})
     except Exception as e:
         return api_error("Erro ao registrar saída", 500, e)
 
-
-@app.get("/api/aulas/historico")
-@require_auth
-def aulas_historico():
-    """Lista aulas encerradas (histórico)."""
-    try:
-        conn = db()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT a.id, a.data_aula, a.tema, a.professores,
-                   a.encerrada_em,
-                   COUNT(f.id)::int AS total_criancas
-            FROM aulas a
-            LEFT JOIN frequencia f ON f.id_aula = a.id
-            WHERE a.encerrada_em IS NOT NULL
-            GROUP BY a.id
-            ORDER BY a.data_aula DESC
-            LIMIT 300
-            """
-        )
-        aulas = cur.fetchall()
-        cur.close()
-        conn.close()
-        return jsonify({"ok": True, "aulas": aulas})
-    except Exception as e:
-        return api_error("Erro ao listar histórico", 500, e)
-
-
-@app.get("/api/aulas/<int:aula_id>/presenca")
-@require_auth
-def aulas_presenca(aula_id: int):
-    """Presenças de uma aula (ativa ou histórica)."""
-    try:
-        conn = db()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT f.id AS frequencia_id, a.id AS aluno_id, a.nome,
-                   f.horario_entrada, f.horario_saida, f.retirado_por
-            FROM frequencia f
-            JOIN alunos a ON a.id = f.id_aluno
-            WHERE f.id_aula = %s
-            ORDER BY f.horario_entrada ASC NULLS LAST
-            """,
-            (aula_id,),
-        )
-        presentes = cur.fetchall()
-        cur.close()
-        conn.close()
-        return jsonify({"ok": True, "aula_id": aula_id, "presentes": presentes})
-    except Exception as e:
-        return api_error("Erro ao listar presenças", 500, e)
-
-
-@app.get("/api/aulas/<int:aula_id>/relatorio")
-@require_auth
-def aulas_relatorio(aula_id: int):
-    """Relatório completo (dados da aula + presenças)."""
-    try:
-        conn = db()
-        cur = conn.cursor()
-        cur.execute("SELECT id, data_aula, tema, professores, encerrada_em FROM aulas WHERE id=%s", (aula_id,))
-        aula = cur.fetchone()
-        if not aula:
-            cur.close()
-            conn.close()
-            return api_error("Aula não encontrada", 404)
-
-        cur.execute(
-            """
-            SELECT f.id AS frequencia_id, a.id AS aluno_id, a.nome,
-                   f.horario_entrada, f.horario_saida, f.retirado_por
-            FROM frequencia f
-            JOIN alunos a ON a.id = f.id_aluno
-            WHERE f.id_aula = %s
-            ORDER BY a.nome
-            """,
-            (aula_id,),
-        )
-        presentes = cur.fetchall()
-        cur.close()
-        conn.close()
-        return jsonify({"ok": True, "aula": aula, "presentes": presentes})
-    except Exception as e:
-        return api_error("Erro ao gerar relatório", 500, e)
 
 @app.get("/api/historico")
 @require_auth
