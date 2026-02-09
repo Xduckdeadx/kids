@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Kid IEQ 2026</title>
+  <title>IEQ Central • Kid 2026</title>
 
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#3f7df4" />
@@ -11,170 +11,273 @@
   <link rel="manifest" href="/static/manifest.json" />
   <link rel="apple-touch-icon" href="/static/images/icon-192.png" />
 
-  <!-- CSS -->
+  <!-- CSS do seu projeto (se tiver) -->
   <link rel="stylesheet" href="/static/css/style.css" />
 
   <style>
-    body {
-      margin: 0;
+    :root{
+      --bg:#f4f6fb;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#475569;
+      --brand:#3f7df4;
+      --border:#e5e7eb;
+      --shadow: 0 10px 25px rgba(0,0,0,.08);
+      --radius: 16px;
+    }
+
+    body{
+      margin:0;
       font-family: Arial, Helvetica, sans-serif;
-      background: #f4f6fb;
+      background: var(--bg);
+      color: var(--text);
     }
 
-    .card {
+    /* Layout base */
+    .container{
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    /* Topbar */
+    .topbar{
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(244,246,251,.85);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(0,0,0,.04);
+    }
+
+    .topbar-inner{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      user-select:none;
+    }
+
+    .brand-mark{
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #2f6df0, #6aa3ff);
+      box-shadow: 0 8px 18px rgba(63,125,244,.25);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#fff;
+      font-weight:800;
+      letter-spacing:.5px;
+    }
+
+    .brand-title{
+      line-height: 1.1;
+    }
+    .brand-title strong{
+      display:block;
+      font-size: 16px;
+    }
+    .brand-title span{
+      display:block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .btn{
+      border: 1px solid rgba(0,0,0,.08);
       background: #fff;
-      border-radius: 16px;
-      box-shadow: 0 10px 25px rgba(0,0,0,.08);
-      padding: 24px;
-      max-width: 420px;
-      margin: auto;
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 700;
+      box-shadow: 0 6px 14px rgba(0,0,0,.06);
+      width: auto; /* IMPORTANTÍSSIMO: não virar barra */
+      white-space: nowrap;
+    }
+    .btn:hover{ opacity: .92; }
+    .btn.primary{
+      background: var(--brand);
+      color: #fff;
+      border-color: transparent;
     }
 
-    h1 {
-      margin-top: 0;
-      text-align: center;
+    /* Cards */
+    .card{
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
+      border: 1px solid rgba(0,0,0,.04);
     }
 
-    input, button {
+    /* Form */
+    .form{
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .input{
       width: 100%;
       padding: 12px;
-      margin-top: 10px;
-      border-radius: 8px;
-      border: 1px solid #ddd;
+      border-radius: 12px;
+      border: 1px solid var(--border);
       font-size: 15px;
+      outline: none;
+      background:#fff;
     }
-
-    button {
-      background: #3f7df4;
-      color: #fff;
-      border: none;
-      cursor: pointer;
-      font-weight: bold;
-    }
-
-    button:hover {
-      opacity: 0.9;
-    }
-
-    #login-msg {
-      margin-top: 10px;
-      color: red;
-      text-align: center;
+    .input:focus{
+      border-color: rgba(63,125,244,.55);
+      box-shadow: 0 0 0 4px rgba(63,125,244,.12);
     }
 
     /* Loading */
-    .loading {
+    .loading{
       position: fixed;
       inset: 0;
-      background: #f4f6fb;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      background: var(--bg);
+      display:flex;
+      align-items:center;
+      justify-content:center;
       z-index: 9999;
     }
-
-    .loading-box {
+    .loading-box{
       background: #fff;
-      padding: 32px;
+      padding: 28px;
       border-radius: 20px;
       text-align: center;
-      width: 320px;
-      box-shadow: 0 10px 25px rgba(0,0,0,.1);
+      width: 340px;
+      box-shadow: 0 10px 25px rgba(0,0,0,.10);
+      border: 1px solid rgba(0,0,0,.04);
     }
-
-    .spinner {
+    .spinner{
       width: 40px;
       height: 40px;
       border: 4px solid #ddd;
-      border-top-color: #3f7df4;
+      border-top-color: var(--brand);
       border-radius: 50%;
       animation: spin 1s linear infinite;
-      margin: 0 auto 16px;
+      margin: 0 auto 14px;
+    }
+    @keyframes spin{ to { transform: rotate(360deg); } }
+
+    /* Pages */
+    #app{ display:none; }
+    #login-wrap{ display:none; }
+
+    .center{
+      min-height: calc(100vh - 86px);
+      display:flex;
+      align-items:flex-start;
+      justify-content:center;
+      padding-top: 28px;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    .welcome{
+      max-width: 560px;
+      width: 100%;
     }
 
-    /* App */
-    #app {
-      display: none;
-      padding: 24px;
+    .muted{ color: var(--muted); }
+
+    ul{
+      margin: 10px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
     }
 
-    .top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 24px;
+    /* Responsivo */
+    @media (max-width: 520px){
+      .topbar-inner{ padding: 12px 14px; }
+      .brand-title span{ display:none; }
+      .container{ padding: 14px; }
     }
   </style>
 </head>
+
 <body>
 
-<!-- LOADING -->
-<div id="loading" class="loading">
-  <div class="loading-box">
-    <div class="spinner"></div>
-    <h2>Kid IEQ 2026</h2>
-    <p>IEQ Central • Ministério Infantil</p>
-    <strong>Iniciando...</strong>
-  </div>
-</div>
-
-<!-- LOGIN -->
-<div id="login" class="card" style="display:none; margin-top:80px;">
-  <h1>Entrar</h1>
-
-  <input
-    id="login-user"
-    type="text"
-    placeholder="Usuário"
-    autocomplete="username"
-  />
-
-  <input
-    id="login-pass"
-    type="password"
-    placeholder="Senha"
-    autocomplete="current-password"
-  />
-
-  <button id="btn-login">Entrar</button>
-
-  <div id="login-msg"></div>
-</div>
-
-<!-- APP -->
-<div id="app">
-  <div class="top">
-    <h2>IEQ Central</h2>
-    <button onclick="Auth.logout()">Sair</button>
+  <!-- LOADING -->
+  <div id="loading" class="loading">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <h2 style="margin:0 0 6px;">Kid IEQ 2026</h2>
+      <div class="muted">IEQ Central • Ministério Infantil</div>
+      <div style="margin-top:10px; font-weight:800;">Iniciando...</div>
+    </div>
   </div>
 
-  <div class="card">
-    <h3>Bem-vindo 👋</h3>
-    <p>O sistema está ativo e pronto para uso.</p>
-    <p>
-      Agora você já pode:
-      <ul>
-        <li>Iniciar aulas</li>
-        <li>Fazer check-in de alunos</li>
-        <li>Consultar histórico</li>
-      </ul>
-    </p>
+  <!-- TOPBAR (só aparece quando logado) -->
+  <div class="topbar" id="topbar" style="display:none;">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark">IEQ</div>
+        <div class="brand-title">
+          <strong>IEQ Central</strong>
+          <span>Ministério Infantil • Kid 2026</span>
+        </div>
+      </div>
+      <button class="btn" id="btn-logout" type="button">Sair</button>
+    </div>
   </div>
-</div>
 
-<!-- JS -->
-<script src="/static/js/app.js"></script>
+  <!-- LOGIN -->
+  <div class="center" id="login-wrap">
+    <div class="card" style="max-width:420px; width:100%;">
+      <h1 style="margin:0 0 14px; text-align:center;">Entrar</h1>
 
-<!-- Service Worker -->
-<script>
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js");
-  }
-</script>
+      <div class="form">
+        <input id="login-user" class="input" type="text" placeholder="Usuário" autocomplete="username" />
+        <input id="login-pass" class="input" type="password" placeholder="Senha" autocomplete="current-password" />
+        <button id="btn-login" class="btn primary" type="button" style="width:100%;">Entrar</button>
+      </div>
+
+      <div id="login-msg" style="margin-top:12px; color:#dc2626; text-align:center;"></div>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app">
+    <div class="container">
+      <div class="center" style="padding-top: 18px;">
+        <div class="card welcome">
+          <h2 style="margin:0 0 10px;">Bem-vindo 👋</h2>
+          <p class="muted" style="margin:0 0 12px;">O sistema está ativo e pronto para uso.</p>
+          <div class="muted">Agora você já pode:</div>
+          <ul>
+            <li>Iniciar aulas</li>
+            <li>Fazer check-in de alunos</li>
+            <li>Consultar histórico</li>
+          </ul>
+          <div class="muted" style="margin-top:14px; font-size:12px;">
+            Dica: agora o “Sair” não vira mais uma avenida azul 😄
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS -->
+  <script src="/static/js/app.js"></script>
+
+  <!-- Service Worker -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js");
+    }
+  </script>
 
 </body>
 </html>
