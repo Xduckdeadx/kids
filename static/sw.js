@@ -1,20 +1,17 @@
-/* Kid IEQ 2025 - sw.js (v5 - update automático + cache seguro) */
-const CACHE = "kid-ieq-cache-v5";
+const CACHE = "kid-ieq-cache-v6";
 
-// Arquivos estáticos do app (não inclua /api aqui)
 const ASSETS = [
   "/",
-  "/static/css/style.css",
-  "/static/js/app.js",
+  "/static/app.js",
   "/static/manifest.json",
-  "/static/images/icon-72.png",
-  "/static/images/icon-96.png",
-  "/static/images/icon-128.png",
-  "/static/images/icon-144.png",
-  "/static/images/icon-152.png",
-  "/static/images/icon-192.png",
-  "/static/images/icon-384.png",
-  "/static/images/icon-512.png"
+  "/static/icon-72.png",
+  "/static/icon-96.png",
+  "/static/icon-128.png",
+  "/static/icon-144.png",
+  "/static/icon-152.png",
+  "/static/icon-192.png",
+  "/static/icon-384.png",
+  "/static/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
@@ -22,9 +19,7 @@ self.addEventListener("install", (event) => {
     try {
       const cache = await caches.open(CACHE);
       await cache.addAll(ASSETS);
-    } catch (e) {
-      // se falhar, o app ainda pode funcionar via rede
-    }
+    } catch (e) {}
     self.skipWaiting();
   })());
 });
@@ -37,22 +32,10 @@ self.addEventListener("activate", (event) => {
   })());
 });
 
-// Permite o app "mandar" o SW assumir imediatamente (sem esperar fechar abas)
-self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
-});
-
-// Estratégia:
-// - /api/*: sempre rede (sem cache)
-// - Navegação (document): network-first com fallback pra cache (evita tela branca quando SW antigo/online instável)
-// - Estáticos: cache-first (rápido)
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // só GET
   if (req.method !== "GET") return;
 
   // API sempre rede
@@ -68,15 +51,15 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Navegação (index.html, rotas do SPA, etc): network-first
-  if (req.mode === "navigate" || (req.destination === "document")) {
+  // Navegação: network-first com fallback
+  if (req.mode === "navigate" || req.destination === "document") {
     event.respondWith((async () => {
       try {
         const fresh = await fetch(req);
         const cache = await caches.open(CACHE);
         cache.put("/", fresh.clone()).catch(() => {});
         return fresh;
-      } catch (e) {
+      } catch {
         const cached = await caches.match(req) || await caches.match("/");
         return cached || new Response("Offline", { status: 503 });
       }
@@ -86,14 +69,6 @@ self.addEventListener("fetch", (event) => {
 
   // Estáticos: cache-first
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-
-      return fetch(req).then((resp) => {
-        const copy = resp.clone();
-        caches.open(CACHE).then(cache => cache.put(req, copy)).catch(() => {});
-        return resp;
-      }).catch(() => new Response("", { status: 503 }));
-    })
+    caches.match(req).then((cached) => cached || fetch(req))
   );
 });
