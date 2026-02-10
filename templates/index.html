@@ -1,35 +1,309 @@
-@app.route("/api/aulas/saida", methods=["POST"])
-@require_auth
-def saida():
-    d = request.json or {}
-    aula_id = d.get("aula_id")
-    aluno_id = d.get("aluno_id")
-    retirado_por = d.get("retirado_por", "")
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>IEQ Central • Kid 2026</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#3f7df4" />
 
-    if not aula_id or not aluno_id:
-        return api_error("aula_id e aluno_id são obrigatórios")
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="apple-touch-icon" href="/static/images/icon-192.png" />
 
-    conn = db()
-    cur = conn.cursor()
+  <style>
+    :root{
+      --bg:#f4f6fb; --card:#fff; --text:#0f172a; --muted:#64748b;
+      --brand:#3f7df4; --border:#e5e7eb; --shadow:0 10px 25px rgba(0,0,0,.08);
+      --radius:16px;
+    }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family: Arial, Helvetica, sans-serif; background:var(--bg); color:var(--text); }
 
-    # tenta atualizar a frequência existente
-    cur.execute("""
-        UPDATE frequencia
-        SET horario_saida=%s, retirado_por=%s
-        WHERE id_aula=%s AND id_aluno=%s
-    """, (datetime.now(), retirado_por, aula_id, aluno_id))
+    /* Loading */
+    .loading{ position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:9999; }
+    .loading-box{ background:#fff; padding:28px; border-radius:20px; text-align:center; width:340px; box-shadow:0 10px 25px rgba(0,0,0,.10); border:1px solid rgba(0,0,0,.04); }
+    .spinner{ width:40px; height:40px; border:4px solid #ddd; border-top-color:var(--brand); border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 14px; }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
 
-    # se não existia check-in ainda, cria registro com saída (caso raro)
-    if cur.rowcount == 0:
-        cur.execute("""
-            INSERT INTO frequencia (id_aula,id_aluno,horario_entrada,horario_saida,retirado_por)
-            VALUES (%s,%s,%s,%s,%s)
-            ON CONFLICT (id_aula,id_aluno)
-            DO UPDATE SET horario_saida=%s, retirado_por=%s
-        """, (aula_id, aluno_id, datetime.now(), datetime.now(), retirado_por,
-              datetime.now(), retirado_por))
+    /* Layout */
+    #login-wrap{ display:none; min-height:100vh; align-items:center; justify-content:center; padding:20px; }
+    #app{ display:none; height:100vh; }
 
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({"ok": True})
+    .card{ background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid rgba(0,0,0,.04); }
+    .input{ width:100%; padding:12px; border-radius:12px; border:1px solid var(--border); font-size:15px; outline:none; background:#fff; }
+    .input:focus{ border-color: rgba(63,125,244,.55); box-shadow:0 0 0 4px rgba(63,125,244,.12); }
+
+    .btn{ border:1px solid rgba(0,0,0,.08); background:#fff; color:var(--text); border-radius:12px; padding:10px 14px; cursor:pointer; font-weight:700; box-shadow:0 6px 14px rgba(0,0,0,.06); }
+    .btn.primary{ background:var(--brand); color:#fff; border-color:transparent; }
+    .btn.danger{ background:#ef4444; color:#fff; border-color:transparent; }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; }
+
+    .login-card{ width:100%; max-width:420px; padding:22px; }
+    .login-title{ margin:0 0 14px; text-align:center; }
+    #login-msg{ margin-top:12px; color:#dc2626; text-align:center; }
+
+    /* App shell */
+    .shell{ display:grid; grid-template-columns: 270px 1fr; height:100vh; }
+    .sidebar{ padding:16px; border-right:1px solid rgba(0,0,0,.06); background:rgba(255,255,255,.6); backdrop-filter: blur(8px); }
+    .brand{ display:flex; gap:12px; align-items:center; margin-bottom:14px; }
+    .mark{ width:42px; height:42px; border-radius:14px; background:linear-gradient(135deg,#2f6df0,#6aa3ff); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:900; }
+    .brand h1{ margin:0; font-size:18px; line-height:1.1; }
+    .brand p{ margin:2px 0 0; font-size:12px; color:var(--muted); }
+
+    .nav{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
+    .nav button{ width:100%; text-align:left; padding:12px; border-radius:14px; background:#fff; border:1px solid rgba(0,0,0,.06); box-shadow:0 6px 14px rgba(0,0,0,.05); font-weight:800; }
+    .nav button.active{ outline:3px solid rgba(63,125,244,.22); border-color: rgba(63,125,244,.35); }
+
+    .sidebar .bottom{ position:fixed; left:16px; bottom:16px; width:238px; display:flex; gap:10px; }
+    .sidebar .bottom .btn{ flex:1; }
+
+    .main{ padding:18px; overflow:auto; }
+    .topbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    .topbar .title{ font-size:18px; font-weight:900; }
+    .topbar .meta{ color:var(--muted); font-size:12px; }
+
+    .grid{ display:grid; grid-template-columns: 1fr; gap:14px; max-width: 1050px; }
+    .row{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 900px){
+      .shell{ grid-template-columns: 1fr; }
+      .sidebar{ position:sticky; top:0; z-index:20; border-right:none; border-bottom:1px solid rgba(0,0,0,.06); }
+      .sidebar .bottom{ position:static; width:100%; margin-top:10px; }
+      .row{ grid-template-columns: 1fr; }
+    }
+
+    .section{ padding:16px; }
+    .muted{ color:var(--muted); }
+    .pill{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; font-weight:800; font-size:12px; border:1px solid rgba(0,0,0,.08); background:#fff; }
+    .ok{ border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.08); }
+    .warn{ border-color: rgba(234,179,8,.35); background: rgba(234,179,8,.10); }
+
+    table{ width:100%; border-collapse:collapse; }
+    th,td{ padding:10px; border-bottom:1px solid rgba(0,0,0,.06); font-size:14px; }
+    th{ text-align:left; color:var(--muted); font-size:12px; letter-spacing:.2px; text-transform:uppercase; }
+    .actions{ display:flex; gap:8px; flex-wrap:wrap; }
+    .small{ padding:8px 10px; border-radius:12px; font-size:13px; }
+  </style>
+</head>
+
+<body>
+  <!-- LOADING -->
+  <div id="loading" class="loading">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <h2 style="margin:0 0 6px;">Kid IEQ 2026</h2>
+      <div class="muted">IEQ Central • Ministério Infantil</div>
+      <div id="loading-status" style="margin-top:10px; font-weight:900;">Iniciando...</div>
+    </div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="login-wrap">
+    <div class="card login-card">
+      <h1 class="login-title">Entrar</h1>
+      <input id="login-user" class="input" type="text" placeholder="Usuário" autocomplete="username" />
+      <div style="height:10px;"></div>
+      <input id="login-pass" class="input" type="password" placeholder="Senha" autocomplete="current-password" />
+      <div style="height:10px;"></div>
+      <button id="btn-login" class="btn primary" type="button" style="width:100%;">Entrar</button>
+      <div id="login-msg"></div>
+      <div class="muted" style="margin-top:12px; font-size:12px; text-align:center;">
+        Padrão: admin / 1234
+      </div>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app">
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="mark">IEQ</div>
+          <div>
+            <h1>IEQ Central</h1>
+            <p>Ministério Infantil • Kid 2026</p>
+          </div>
+        </div>
+
+        <div class="nav">
+          <button data-page="home" class="active">🏠 Dashboard</button>
+          <button data-page="aulas">🎓 Aulas</button>
+          <button data-page="ativa">🟢 Aula ativa</button>
+          <button data-page="alunos">👧🧒 Alunos</button>
+          <button data-page="historico">🗂️ Histórico</button>
+        </div>
+
+        <div class="bottom">
+          <button id="btn-refresh" class="btn">Atualizar</button>
+          <button id="btn-logout" class="btn danger">Sair</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <div class="title" id="page-title">Dashboard</div>
+            <div class="meta" id="page-meta">Carregando dados…</div>
+          </div>
+          <div class="pill" id="pill-status">Status</div>
+        </div>
+
+        <div class="grid">
+          <!-- HOME -->
+          <section id="page-home" class="card section">
+            <h2 style="margin:0 0 8px;">Bem-vindo 👋</h2>
+            <div class="muted">Use o menu para iniciar aulas e fazer check-in.</div>
+            <div style="height:14px;"></div>
+
+            <div class="row">
+              <div class="card section">
+                <div style="font-weight:900;">Aula ativa agora</div>
+                <div class="muted" id="home-aula-ativa" style="margin-top:6px;">Verificando…</div>
+                <div class="actions" style="margin-top:10px;">
+                  <button id="home-open-ativa" class="btn primary small">Abrir aula ativa</button>
+                </div>
+              </div>
+
+              <div class="card section">
+                <div style="font-weight:900;">Atalhos</div>
+                <div class="actions" style="margin-top:10px;">
+                  <button class="btn small" data-goto="aulas">Ir para iniciar aula</button>
+                  <button class="btn small" data-goto="alunos">Ver alunos</button>
+                  <button class="btn small" data-goto="historico">Ver histórico</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- AULAS -->
+          <section id="page-aulas" class="card section" style="display:none;">
+            <h2 style="margin:0 0 8px;">Iniciar aula</h2>
+            <div class="muted">Professor, auxiliar e tema. Ao iniciar, abre “Aula ativa”.</div>
+            <div style="height:14px;"></div>
+
+            <div class="row">
+              <div>
+                <label style="font-weight:900;">Professor</label>
+                <input id="aula-prof" class="input" placeholder="Ex: Prof. Maria" />
+              </div>
+              <div>
+                <label style="font-weight:900;">Auxiliar</label>
+                <input id="aula-aux" class="input" placeholder="Ex: Tia Ana" />
+              </div>
+            </div>
+
+            <div style="height:12px;"></div>
+
+            <label style="font-weight:900;">Tema</label>
+            <input id="aula-tema" class="input" placeholder="Ex: O Bom Pastor" />
+
+            <div class="actions" style="margin-top:14px;">
+              <button id="btn-iniciar-aula" class="btn primary">Iniciar aula</button>
+              <button id="btn-ver-ativa" class="btn">Abrir aula ativa</button>
+            </div>
+
+            <div id="aula-msg" class="muted" style="margin-top:10px;"></div>
+          </section>
+
+          <!-- AULA ATIVA -->
+          <section id="page-ativa" class="card section" style="display:none;">
+            <h2 style="margin:0 0 8px;">Aula ativa</h2>
+            <div class="muted" id="ativa-info">Carregando…</div>
+
+            <div style="height:14px;"></div>
+
+            <div class="row">
+              <div class="card section">
+                <div style="font-weight:900;">Check-in</div>
+                <div class="muted" style="margin:6px 0 10px;">Selecione aluno e marque entrada/saída.</div>
+
+                <label style="font-weight:900;">Aluno</label>
+                <select id="check-aluno" class="input"></select>
+
+                <label style="font-weight:900; margin-top:10px;">Retirado por (opcional)</label>
+                <input id="retirado-por" class="input" placeholder="Ex: Pai / Mãe / Responsável" />
+
+                <div class="actions" style="margin-top:12px;">
+                  <button id="btn-entrada" class="btn primary small">Entrada</button>
+                  <button id="btn-saida" class="btn small">Saída</button>
+                </div>
+
+                <div id="check-msg" class="muted" style="margin-top:10px;"></div>
+              </div>
+
+              <div class="card section">
+                <div style="font-weight:900;">Lista de presença</div>
+                <div style="overflow:auto; max-height: 340px; margin-top:10px;">
+                  <table>
+                    <thead>
+                      <tr><th>Aluno</th><th>Entrada</th><th>Saída</th></tr>
+                    </thead>
+                    <tbody id="t-presenca"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ALUNOS -->
+          <section id="page-alunos" class="card section" style="display:none;">
+            <h2 style="margin:0 0 8px;">Alunos</h2>
+            <div class="muted">Cadastrar e listar alunos.</div>
+
+            <div style="height:12px;"></div>
+
+            <div class="row">
+              <div class="card section">
+                <div style="font-weight:900;">Cadastrar aluno</div>
+                <input id="novo-aluno" class="input" placeholder="Nome do aluno" />
+                <div class="actions" style="margin-top:12px;">
+                  <button id="btn-add-aluno" class="btn primary small">Cadastrar</button>
+                </div>
+                <div id="aluno-msg" class="muted" style="margin-top:10px;"></div>
+              </div>
+
+              <div class="card section">
+                <div style="font-weight:900;">Lista</div>
+                <div style="overflow:auto; max-height: 360px; margin-top:10px;">
+                  <table>
+                    <thead><tr><th>Nome</th></tr></thead>
+                    <tbody id="t-alunos"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- HISTÓRICO -->
+          <section id="page-historico" class="card section" style="display:none;">
+            <h2 style="margin:0 0 8px;">Histórico</h2>
+            <div class="muted">Você pode entrar na aula ativa por aqui também.</div>
+
+            <div class="actions" style="margin-top:12px;">
+              <button id="hist-open-ativa" class="btn primary small">Entrar na aula ativa</button>
+              <button id="hist-refresh" class="btn small">Atualizar</button>
+            </div>
+
+            <div style="overflow:auto; margin-top:10px;">
+              <table>
+                <thead>
+                  <tr><th>ID</th><th>Data</th><th>Tema</th><th>Professores</th><th>Status</th></tr>
+                </thead>
+                <tbody id="t-historico"></tbody>
+              </table>
+            </div>
+
+            <div id="hist-msg" class="muted" style="margin-top:10px;"></div>
+          </section>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js");
+    }
+  </script>
+</body>
+</html>
