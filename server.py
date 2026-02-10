@@ -9,39 +9,33 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
+
 # ---------------- App ----------------
 app = Flask(__name__, template_folder="templates", static_folder="static")
 CORS(app)
 
+
 # ---------------- DB ----------------
-DATABASE_URL = os.getenv("DATABASE_URL")
-
 def db():
-    # Railway normalmente fornece DATABASE_URL
-    if DATABASE_URL:
-        return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL não configurada no Railway.")
+    return psycopg2.connect(database_url, cursor_factory=RealDictCursor)
 
-    # fallback para vars separadas (se você usar)
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        port=os.getenv("DB_PORT", "5432"),
-        sslmode=os.getenv("DB_SSLMODE", "require"),
-        cursor_factory=RealDictCursor
-    )
 
 # ---------------- Auth ----------------
 SECRET_KEY = os.getenv("SECRET_KEY", "ieq-central-2026")
 TOKEN_MAX_AGE = 60 * 60 * 24 * 14  # 14 dias
 serializer = URLSafeTimedSerializer(SECRET_KEY)
 
+
 def api_error(msg, status=400):
     return jsonify({"ok": False, "error": msg}), status
 
+
 def create_token(user):
     return serializer.dumps({"id": user["id"], "role": user["role"]})
+
 
 def require_auth(fn):
     @wraps(fn)
@@ -50,7 +44,7 @@ def require_auth(fn):
         if not auth.startswith("Bearer "):
             return api_error("Token ausente", 401)
 
-        token = auth.replace("Bearer ", "")
+        token = auth.replace("Bearer ", "").strip()
         try:
             data = serializer.loads(token, max_age=TOKEN_MAX_AGE)
             request.user = data
@@ -60,7 +54,9 @@ def require_auth(fn):
             return api_error("Token inválido", 401)
 
         return fn(*args, **kwargs)
+
     return wrapper
+
 
 # ---------------- DB INIT ----------------
 def ensure_tables():
@@ -94,7 +90,7 @@ def ensure_tables():
     );
     """)
 
-    # adiciona encerrada_em para controlar aula ativa
+    # aula ativa = encerrada_em IS NULL
     cur.execute("""
     CREATE TABLE IF NOT EXISTS aulas (
         id SERIAL PRIMARY KEY,
@@ -116,7 +112,7 @@ def ensure_tables():
     );
     """)
 
-    # garante unique para evitar duplicar check-in na mesma aula
+    # garante UNIQUE(id_aula, id_aluno)
     cur.execute("""
     DO $$
     BEGIN
@@ -129,8 +125,8 @@ def ensure_tables():
     END $$;
     """)
 
-    # seed admin (corrige o bug do cur fora do escopo)
-    cur.execute("SELECT id FROM usuarios WHERE usuario='admin'")
+    # seed admin
+    cur.execute("SELECT id FROM usuarios WHERE usuario=%s", ("admin",))
     if not cur.fetchone():
         cur.execute(
             "INSERT INTO usuarios (nome, usuario, senha, role) VALUES (%s,%s,%s,%s)",
@@ -141,24 +137,27 @@ def ensure_tables():
     cur.close()
     conn.close()
 
+
 ensure_tables()
+
 
 # ---------------- Pages / Static ----------------
 @app.route("/")
 def index():
     return render_template("index.html")
 
+
 @app.route("/sw.js")
 def sw_root():
-    # para registrar SW na raiz: /sw.js
     return send_from_directory(app.static_folder, "sw.js")
+
 
 # ---------------- API: AUTH ----------------
 @app.route("/api/login", methods=["POST"])
 def login():
     data = request.json or {}
-    usuario = data.get("usuario")
-    senha = data.get("senha")
+    usuario = (data.get("usuario") or "").strip()
+    senha = (data.get("senha") or "").strip()
 
     if not usuario or not senha:
         return api_error("Informe usuario e senha")
@@ -175,6 +174,7 @@ def login():
 
     return jsonify({"ok": True, "token": create_token(u)})
 
+
 @app.route("/api/me")
 @require_auth
 def me():
@@ -186,8 +186,9 @@ def me():
     conn.close()
     return jsonify({"ok": True, "usuario": u})
 
+
 # ---------------- API: ALUNOS ----------------
-@app.route("/api/alunos")
+@app.route("/api/alunos", methods=["GET"])
 @require_auth
 def get_alunos():
     conn = db()
@@ -197,6 +198,7 @@ def get_alunos():
     cur.close()
     conn.close()
     return jsonify({"ok": True, "alunos": alunos})
+
 
 @app.route("/api/alunos", methods=["POST"])
 @require_auth
@@ -214,8 +216,9 @@ def add_aluno():
     conn.close()
     return jsonify({"ok": True})
 
+
 # ---------------- API: AULAS ----------------
-@app.route("/api/aulas/ativa")
+@app.route("/api/aulas/ativa", methods=["GET"])
 @require_auth
 def aula_ativa():
     conn = db()
@@ -225,6 +228,7 @@ def aula_ativa():
     cur.close()
     conn.close()
     return jsonify({"ok": True, "aula": aula})
+
 
 @app.route("/api/aulas/iniciar", methods=["POST"])
 @require_auth
@@ -239,7 +243,7 @@ def iniciar_aula():
     conn = db()
     cur = conn.cursor()
 
-    # opcional: encerra qualquer aula ativa anterior antes de iniciar outra
+    # encerra qualquer aula ativa anterior (segurança)
     cur.execute("UPDATE aulas SET encerrada_em=%s WHERE encerrada_em IS NULL", (datetime.now(),))
 
     cur.execute(
@@ -252,6 +256,7 @@ def iniciar_aula():
     cur.close()
     conn.close()
     return jsonify({"ok": True, "aula_id": aula_id})
+
 
 @app.route("/api/aulas/encerrar", methods=["POST"])
 @require_auth
@@ -272,7 +277,8 @@ def encerrar_aula():
     conn.close()
     return jsonify({"ok": True})
 
-@app.route("/api/aulas/historico")
+
+@app.route("/api/aulas/historico", methods=["GET"])
 @require_auth
 def aulas_historico():
     conn = db()
@@ -283,9 +289,10 @@ def aulas_historico():
     conn.close()
     return jsonify({"ok": True, "aulas": aulas})
 
-@app.route("/api/aulas/<int:aula_id>/presenca")
+
+@app.route("/api/aulas/<int:aula_id>/presenca", methods=["GET"])
 @require_auth
-def presenca(aula_id):
+def presenca(aula_id: int):
     conn = db()
     cur = conn.cursor()
     cur.execute("""
@@ -299,6 +306,7 @@ def presenca(aula_id):
     cur.close()
     conn.close()
     return jsonify({"ok": True, "presenca": data})
+
 
 @app.route("/api/aulas/entrada", methods=["POST"])
 @require_auth
@@ -325,13 +333,14 @@ def entrada():
     conn.close()
     return jsonify({"ok": True})
 
+
 @app.route("/api/aulas/saida", methods=["POST"])
 @require_auth
 def saida():
     d = request.json or {}
     aula_id = d.get("aula_id")
     aluno_id = d.get("aluno_id")
-    retirado_por = d.get("retirado_por", "")
+    retirado_por = (d.get("retirado_por") or "").strip()
 
     if not aula_id or not aluno_id:
         return api_error("aula_id e aluno_id são obrigatórios")
@@ -339,14 +348,14 @@ def saida():
     conn = db()
     cur = conn.cursor()
 
-    # tenta atualizar a frequência existente
+    # Atualiza se já existe registro
     cur.execute("""
         UPDATE frequencia
-        SET horario_saida=%s, retirado_por=%s
-        WHERE id_aula=%s AND id_aluno=%s
+        SET horario_saida = %s, retirado_por = %s
+        WHERE id_aula = %s AND id_aluno = %s
     """, (datetime.now(), retirado_por, aula_id, aluno_id))
 
-    # se não existia check-in ainda, cria registro com saída (caso raro)
+    # Se não existia check-in ainda, cria
     if cur.rowcount == 0:
         cur.execute("""
             INSERT INTO frequencia (id_aula, id_aluno, horario_entrada, horario_saida, retirado_por)
@@ -364,8 +373,8 @@ def saida():
     conn.close()
     return jsonify({"ok": True})
 
-# ------------- Local run (não usado no Railway com gunicorn) -------------
+
+# ------------- Local run (só para testes locais) -------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
-    
