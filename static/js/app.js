@@ -1,9 +1,24 @@
 const API = "/api";
 const $ = (id) => document.getElementById(id);
 
-function setLoading(msg){ const s = $("loading-status"); if(s) s.textContent = msg || "Carregando..."; }
-function hideLoading(){ const el = $("loading"); if(el) el.style.display = "none"; }
-function show(el, on=true){ if(el) el.style.display = on ? "" : "none"; }
+const UI = {
+  setLoading(msg) {
+    const s = $("loading-status");
+    if (s) s.textContent = msg || "Carregando...";
+  },
+  hideLoading() {
+    const el = $("loading");
+    if (el) el.style.display = "none";
+  },
+  showLoading(msg) {
+    const el = $("loading");
+    if (el) el.style.display = "";
+    this.setLoading(msg);
+  },
+  show(el, on = true) {
+    if (el) el.style.display = on ? "" : "none";
+  }
+};
 
 const Auth = {
   token: localStorage.getItem("token") || "",
@@ -21,15 +36,16 @@ const Auth = {
       body: JSON.stringify({ usuario, senha })
     });
     const d = await r.json().catch(() => ({}));
-    if (!d.ok) throw (d.error || "Falha no login");
+    if (!d.ok) throw new Error(d.error || "Falha no login");
     this.token = d.token;
     localStorage.setItem("token", d.token);
   },
 
   async me() {
+    if (!this.token) throw new Error("Sem token");
     const r = await fetch(`${API}/me`, { headers: this.headers() });
     const d = await r.json().catch(() => ({}));
-    if (!d.ok) throw (d.error || "Não autenticado");
+    if (!d.ok) throw new Error(d.error || "Não autenticado");
     return d.usuario;
   },
 
@@ -39,68 +55,91 @@ const Auth = {
   }
 };
 
-const State = { user:null, aulaAtiva:null, alunos:[], historico:[], page:"home" };
+const State = {
+  user: null,
+  aulaAtiva: null,
+  alunos: [],
+  historico: [],
+  page: "home"
+};
 
-function fmtDT(v){
+function fmtDT(v) {
   if (!v) return "-";
-  try { return new Date(v).toLocaleString("pt-BR"); }
-  catch { return String(v); }
+  try {
+    return new Date(v).toLocaleString("pt-BR");
+  } catch {
+    return String(v);
+  }
 }
 
-async function apiGet(path){
+async function apiGet(path) {
   const r = await fetch(`${API}${path}`, { headers: Auth.headers() });
   const d = await r.json().catch(() => ({}));
-  if (!d.ok) throw (d.error || `Erro em ${path}`);
+  if (!d.ok) throw new Error(d.error || `Erro em ${path}`);
   return d;
 }
-async function apiPost(path, body){
+
+async function apiPost(path, body) {
   const r = await fetch(`${API}${path}`, {
-    method:"POST",
+    method: "POST",
     headers: Auth.headers(),
     body: JSON.stringify(body || {})
   });
   const d = await r.json().catch(() => ({}));
-  if (!d.ok) throw (d.error || `Erro em ${path}`);
+  if (!d.ok) throw new Error(d.error || `Erro em ${path}`);
   return d;
 }
 
-function setMeta(txt){ $("page-meta").textContent = txt || ""; }
-function setTitle(t){ $("page-title").textContent = t; }
+function setMeta(txt) {
+  const el = $("page-meta");
+  if (el) el.textContent = txt || "";
+}
+function setTitle(txt) {
+  const el = $("page-title");
+  if (el) el.textContent = txt || "";
+}
 
-function setPill(){
+function setPill() {
   const p = $("pill-status");
   if (!p) return;
   p.className = "pill";
-  if (State.aulaAtiva) { p.classList.add("ok"); p.textContent = "🟢 Aula ativa"; }
-  else { p.classList.add("warn"); p.textContent = "🟡 Sem aula ativa"; }
+  if (State.aulaAtiva) {
+    p.classList.add("ok");
+    p.textContent = "🟢 Aula ativa";
+  } else {
+    p.classList.add("warn");
+    p.textContent = "🟡 Sem aula ativa";
+  }
 }
 
-function setActiveNav(page){
-  document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
+function setActiveNav(page) {
+  document.querySelectorAll(".nav button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.page === page);
+  });
 }
 
-function showPage(page){
+function showPage(page) {
   State.page = page;
   setActiveNav(page);
 
   const titles = {
-    home:["Dashboard","Resumo rápido"],
-    aulas:["Aulas","Configurar e iniciar aula"],
-    ativa:["Aula ativa","Check-in e presença"],
-    alunos:["Alunos","Cadastrar e listar"],
-    historico:["Histórico","Aulas anteriores e acesso à ativa"]
+    home: ["Dashboard", "Resumo rápido"],
+    aulas: ["Aulas", "Configurar e iniciar aula"],
+    ativa: ["Aula ativa", "Check-in e presença"],
+    alunos: ["Alunos", "Cadastrar e listar"],
+    historico: ["Histórico", "Aulas anteriores e acesso à ativa"]
   };
 
-  Object.keys(titles).forEach(k => show($(`page-${k}`), k === page));
+  Object.keys(titles).forEach((k) => UI.show($(`page-${k}`), k === page));
   setTitle(titles[page][0]);
   setMeta(titles[page][1]);
 }
 
-function fillAlunos(){
+function fillAlunos() {
   const sel = $("check-aluno");
-  if (sel){
+  if (sel) {
     sel.innerHTML = "";
-    for (const a of State.alunos){
+    for (const a of State.alunos) {
       const o = document.createElement("option");
       o.value = a.id;
       o.textContent = a.nome;
@@ -109,9 +148,9 @@ function fillAlunos(){
   }
 
   const tb = $("t-alunos");
-  if (tb){
+  if (tb) {
     tb.innerHTML = "";
-    for (const a of State.alunos){
+    for (const a of State.alunos) {
       const tr = document.createElement("tr");
       tr.innerHTML = `<td>${a.nome || ""}</td>`;
       tb.appendChild(tr);
@@ -119,11 +158,11 @@ function fillAlunos(){
   }
 }
 
-function renderHistorico(){
+function renderHistorico() {
   const tb = $("t-historico");
   if (!tb) return;
   tb.innerHTML = "";
-  for (const a of State.historico){
+  for (const a of State.historico) {
     const st = a.encerrada_em ? "Encerrada" : "Ativa";
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -137,11 +176,11 @@ function renderHistorico(){
   }
 }
 
-function renderPresenca(rows){
+function renderPresenca(rows) {
   const tb = $("t-presenca");
   if (!tb) return;
   tb.innerHTML = "";
-  for (const r of rows){
+  for (const r of rows) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${r.nome || ""}</td>
@@ -152,27 +191,33 @@ function renderPresenca(rows){
   }
 }
 
-async function loadAlunos(){
+async function loadAlunos() {
   const d = await apiGet("/alunos");
   State.alunos = d.alunos || [];
   fillAlunos();
 }
 
-async function loadAulaAtiva(){
+async function loadAulaAtiva() {
   const d = await apiGet("/aulas/ativa");
   State.aulaAtiva = d.aula || null;
 
   setPill();
 
-  $("home-aula-ativa").textContent = State.aulaAtiva
-    ? `Aula #${State.aulaAtiva.id} • Tema: ${State.aulaAtiva.tema || "-"}`
-    : "Nenhuma aula ativa no momento.";
+  const h = $("home-aula-ativa");
+  if (h) {
+    h.textContent = State.aulaAtiva
+      ? `Aula #${State.aulaAtiva.id} • Tema: ${State.aulaAtiva.tema || "-"}`
+      : "Nenhuma aula ativa no momento.";
+  }
 
-  $("ativa-info").textContent = State.aulaAtiva
-    ? `Aula #${State.aulaAtiva.id} • Tema: ${State.aulaAtiva.tema || "-"} • Professores: ${State.aulaAtiva.professores || "-"}`
-    : "Nenhuma aula ativa agora. Vá em “Aulas” e inicie uma.";
+  const info = $("ativa-info");
+  if (info) {
+    info.textContent = State.aulaAtiva
+      ? `Aula #${State.aulaAtiva.id} • Tema: ${State.aulaAtiva.tema || "-"} • Professores: ${State.aulaAtiva.professores || "-"}`
+      : "Nenhuma aula ativa agora. Vá em “Aulas” e inicie uma.";
+  }
 
-  if (State.aulaAtiva){
+  if (State.aulaAtiva) {
     const p = await apiGet(`/aulas/${State.aulaAtiva.id}/presenca`);
     renderPresenca(p.presenca || []);
   } else {
@@ -180,141 +225,191 @@ async function loadAulaAtiva(){
   }
 }
 
-async function loadHistorico(){
+async function loadHistorico() {
   const d = await apiGet("/aulas/historico");
   State.historico = d.aulas || [];
   renderHistorico();
 }
 
-async function refreshAll(){
+async function refreshAll() {
   setMeta("Atualizando…");
   await Promise.all([loadAlunos(), loadAulaAtiva(), loadHistorico()]);
   setMeta("Atualizado ✅");
 }
 
-async function iniciarAula(){
+async function iniciarAula() {
   const prof = ($("aula-prof").value || "").trim();
-  const aux  = ($("aula-aux").value || "").trim();
+  const aux = ($("aula-aux").value || "").trim();
   const tema = ($("aula-tema").value || "").trim();
-  if (!tema){ $("aula-msg").textContent = "Informe o tema."; return; }
 
-  const professores = [prof, aux].filter(Boolean).join(" / ");
-  $("aula-msg").textContent = "Iniciando…";
+  const msg = $("aula-msg");
+  if (!tema) {
+    if (msg) msg.textContent = "Informe o tema.";
+    return;
+  }
 
-  try{
+  const professores = [prof, aux].filter(Boolean).join(" • ");
+  UI.setLoading("Iniciando aula…");
+
+  try {
     await apiPost("/aulas/iniciar", { tema, professores });
-    $("aula-msg").textContent = "Aula iniciada ✅";
+    if (msg) msg.textContent = "Aula iniciada ✅";
     await loadAulaAtiva();
     showPage("ativa");
-  } catch(e){
-    $("aula-msg").textContent = String(e);
+  } catch (e) {
+    if (msg) msg.textContent = e.message || "Falha ao iniciar aula";
+  } finally {
+    UI.hideLoading();
   }
 }
 
-async function entrada(){
-  if (!State.aulaAtiva){ $("check-msg").textContent = "Sem aula ativa."; return; }
-  const aluno_id = Number($("check-aluno").value);
-  if (!aluno_id){ $("check-msg").textContent = "Selecione um aluno."; return; }
+async function checkEntrada() {
+  if (!State.aulaAtiva) return;
+  const alunoId = Number(($("check-aluno").value || "0"));
+  if (!alunoId) return;
 
-  $("check-msg").textContent = "Registrando entrada…";
-  try{
-    await apiPost("/aulas/entrada", { aula_id: State.aulaAtiva.id, aluno_id });
-    $("check-msg").textContent = "Entrada ✅";
+  const msg = $("check-msg");
+  if (msg) msg.textContent = "Registrando entrada…";
+
+  try {
+    await apiPost("/aulas/entrada", { aula_id: State.aulaAtiva.id, aluno_id: alunoId });
+    if (msg) msg.textContent = "Entrada registrada ✅";
     await loadAulaAtiva();
-  } catch(e){
-    $("check-msg").textContent = String(e);
+  } catch (e) {
+    if (msg) msg.textContent = e.message || "Erro na entrada";
   }
 }
 
-async function saida(){
-  if (!State.aulaAtiva){ $("check-msg").textContent = "Sem aula ativa."; return; }
-  const aluno_id = Number($("check-aluno").value);
-  if (!aluno_id){ $("check-msg").textContent = "Selecione um aluno."; return; }
+async function checkSaida() {
+  if (!State.aulaAtiva) return;
+  const alunoId = Number(($("check-aluno").value || "0"));
+  const retiradoPor = ($("retirado-por").value || "").trim();
+  if (!alunoId) return;
 
-  const retirado_por = ($("retirado-por").value || "").trim();
+  const msg = $("check-msg");
+  if (msg) msg.textContent = "Registrando saída…";
 
-  $("check-msg").textContent = "Registrando saída…";
-  try{
-    await apiPost("/aulas/saida", { aula_id: State.aulaAtiva.id, aluno_id, retirado_por });
-    $("check-msg").textContent = "Saída ✅";
+  try {
+    await apiPost("/aulas/saida", {
+      aula_id: State.aulaAtiva.id,
+      aluno_id: alunoId,
+      retirado_por: retiradoPor
+    });
+    if (msg) msg.textContent = "Saída registrada ✅";
     await loadAulaAtiva();
-  } catch(e){
-    $("check-msg").textContent = String(e);
+  } catch (e) {
+    if (msg) msg.textContent = e.message || "Erro na saída";
   }
 }
 
-async function addAluno(){
+async function cadastrarAluno() {
   const nome = ($("novo-aluno").value || "").trim();
-  if (!nome){ $("aluno-msg").textContent = "Digite o nome."; return; }
+  const msg = $("aluno-msg");
+  if (!nome) {
+    if (msg) msg.textContent = "Digite o nome.";
+    return;
+  }
 
-  $("aluno-msg").textContent = "Cadastrando…";
-  try{
+  try {
     await apiPost("/alunos", { nome });
     $("novo-aluno").value = "";
-    $("aluno-msg").textContent = "Cadastrado ✅";
+    if (msg) msg.textContent = "Aluno cadastrado ✅";
     await loadAlunos();
-  } catch(e){
-    $("aluno-msg").textContent = String(e);
+  } catch (e) {
+    if (msg) msg.textContent = e.message || "Falha ao cadastrar";
   }
 }
 
-async function boot(){
-  try{
-    setLoading("Verificando acesso…");
-    State.user = await Auth.me();
+function bindUI() {
+  // Navegação
+  document.querySelectorAll(".nav button").forEach((b) => {
+    b.addEventListener("click", () => showPage(b.dataset.page));
+  });
 
-    show($("login-wrap"), false);
-    show($("app"), true);
+  // Atalhos
+  document.querySelectorAll("[data-goto]").forEach((b) => {
+    b.addEventListener("click", () => showPage(b.getAttribute("data-goto")));
+  });
 
-    document.querySelectorAll(".nav button").forEach(b => {
-      b.onclick = async () => {
-        showPage(b.dataset.page);
-        if (b.dataset.page === "ativa") await loadAulaAtiva();
-        if (b.dataset.page === "alunos") await loadAlunos();
-        if (b.dataset.page === "historico") await loadHistorico();
-      };
-    });
+  $("btn-logout")?.addEventListener("click", () => Auth.logout());
+  $("btn-refresh")?.addEventListener("click", () => refreshAll());
 
-    document.querySelectorAll("[data-goto]").forEach(btn => btn.onclick = () => showPage(btn.dataset.goto));
+  $("home-open-ativa")?.addEventListener("click", () => showPage("ativa"));
+  $("btn-ver-ativa")?.addEventListener("click", () => showPage("ativa"));
 
-    $("btn-logout").onclick = () => Auth.logout();
-    $("btn-refresh").onclick = () => refreshAll();
+  $("btn-iniciar-aula")?.addEventListener("click", () => iniciarAula());
 
-    $("home-open-ativa").onclick = async () => { await loadAulaAtiva(); showPage("ativa"); };
-    $("btn-iniciar-aula").onclick = () => iniciarAula();
-    $("btn-ver-ativa").onclick = async () => { await loadAulaAtiva(); showPage("ativa"); };
+  $("btn-entrada")?.addEventListener("click", () => checkEntrada());
+  $("btn-saida")?.addEventListener("click", () => checkSaida());
 
-    $("btn-entrada").onclick = () => entrada();
-    $("btn-saida").onclick = () => saida();
+  $("btn-add-aluno")?.addEventListener("click", () => cadastrarAluno());
 
-    $("btn-add-aluno").onclick = () => addAluno();
+  $("hist-open-ativa")?.addEventListener("click", async () => {
+    await loadAulaAtiva();
+    showPage("ativa");
+  });
+  $("hist-refresh")?.addEventListener("click", () => loadHistorico());
+}
 
-    $("hist-open-ativa").onclick = async () => { await loadAulaAtiva(); showPage("ativa"); };
-    $("hist-refresh").onclick = async () => { await loadHistorico(); $("hist-msg").textContent = "Atualizado ✅"; };
+async function boot() {
+  // ✅ GARANTIA: nunca fica preso no “Iniciando…”
+  UI.setLoading("Iniciando…");
 
-    setLoading("Carregando dados…");
+  // Tenta evitar SW antigo segurando arquivo velho
+  try {
+    if ("serviceWorker" in navigator) {
+      // não desregistra automaticamente, mas força pegar versão nova quando você fizer hard refresh
+    }
+  } catch {}
+
+  try {
+    // Checa se API está viva
+    await fetch(`${API}/health`).catch(() => null);
+
+    // Se tiver token, tenta autenticar
+    if (Auth.token) {
+      State.user = await Auth.me();
+    }
+
+    // Mostra telas
+    UI.hideLoading();
+
+    if (!State.user) {
+      UI.show($("login-wrap"), true);
+      UI.show($("app"), false);
+
+      $("btn-login")?.addEventListener("click", async () => {
+        const u = ($("login-user").value || "").trim();
+        const p = ($("login-pass").value || "").trim();
+        const msg = $("login-msg");
+
+        if (msg) msg.textContent = "";
+        if (!u || !p) {
+          if (msg) msg.textContent = "Informe usuário e senha.";
+          return;
+        }
+
+        try {
+          await Auth.login(u, p);
+          location.reload();
+        } catch (e) {
+          if (msg) msg.textContent = e.message || "Falha no login";
+        }
+      });
+
+      return;
+    }
+
+    UI.show($("login-wrap"), false);
+    UI.show($("app"), true);
+
+    bindUI();
     showPage("home");
     await refreshAll();
-
-  } catch(e){
-    console.error(e);
-    show($("login-wrap"), true);
-    show($("app"), false);
-
-    $("btn-login").onclick = async () => {
-      const u = $("login-user").value.trim();
-      const p = $("login-pass").value;
-      $("login-msg").textContent = "";
-      try{
-        await Auth.login(u, p);
-        location.reload();
-      } catch(err){
-        $("login-msg").textContent = String(err);
-      }
-    };
-  } finally {
-    hideLoading();
+  } catch (e) {
+    // Se tudo der ruim, mostra erro no loader
+    UI.setLoading(`Erro: ${e.message || e}`);
   }
 }
 
-boot();
+document.addEventListener("DOMContentLoaded", boot);
