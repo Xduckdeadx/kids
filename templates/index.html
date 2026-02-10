@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#3f7df4" />
 
   <link rel="manifest" href="/static/manifest.json" />
-  <link rel="apple-touch-icon" href="/static/images/icon-192.png" />
+  <link rel="apple-touch-icon" href="/static/icon-192.png" />
 
   <style>
     :root{
@@ -18,13 +18,11 @@
     *{ box-sizing:border-box; }
     body{ margin:0; font-family: Arial, Helvetica, sans-serif; background:var(--bg); color:var(--text); }
 
-    /* Loading */
     .loading{ position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:9999; }
     .loading-box{ background:#fff; padding:28px; border-radius:20px; text-align:center; width:340px; box-shadow:0 10px 25px rgba(0,0,0,.10); border:1px solid rgba(0,0,0,.04); }
     .spinner{ width:40px; height:40px; border:4px solid #ddd; border-top-color:var(--brand); border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 14px; }
     @keyframes spin{ to{ transform:rotate(360deg); } }
 
-    /* Layout */
     #login-wrap{ display:none; min-height:100vh; align-items:center; justify-content:center; padding:20px; }
     #app{ display:none; height:100vh; }
 
@@ -41,7 +39,6 @@
     .login-title{ margin:0 0 14px; text-align:center; }
     #login-msg{ margin-top:12px; color:#dc2626; text-align:center; }
 
-    /* App shell */
     .shell{ display:grid; grid-template-columns: 270px 1fr; height:100vh; }
     .sidebar{ padding:16px; border-right:1px solid rgba(0,0,0,.06); background:rgba(255,255,255,.6); backdrop-filter: blur(8px); }
     .brand{ display:flex; gap:12px; align-items:center; margin-bottom:14px; }
@@ -85,7 +82,6 @@
 </head>
 
 <body>
-  <!-- LOADING -->
   <div id="loading" class="loading">
     <div class="loading-box">
       <div class="spinner"></div>
@@ -95,7 +91,6 @@
     </div>
   </div>
 
-  <!-- LOGIN -->
   <div id="login-wrap">
     <div class="card login-card">
       <h1 class="login-title">Entrar</h1>
@@ -111,7 +106,6 @@
     </div>
   </div>
 
-  <!-- APP -->
   <div id="app">
     <div class="shell">
       <aside class="sidebar">
@@ -147,7 +141,6 @@
         </div>
 
         <div class="grid">
-          <!-- HOME -->
           <section id="page-home" class="card section">
             <h2 style="margin:0 0 8px;">Bem-vindo 👋</h2>
             <div class="muted">Use o menu para iniciar aulas e fazer check-in.</div>
@@ -173,7 +166,6 @@
             </div>
           </section>
 
-          <!-- AULAS -->
           <section id="page-aulas" class="card section" style="display:none;">
             <h2 style="margin:0 0 8px;">Iniciar aula</h2>
             <div class="muted">Professor, auxiliar e tema. Ao iniciar, abre “Aula ativa”.</div>
@@ -203,7 +195,6 @@
             <div id="aula-msg" class="muted" style="margin-top:10px;"></div>
           </section>
 
-          <!-- AULA ATIVA -->
           <section id="page-ativa" class="card section" style="display:none;">
             <h2 style="margin:0 0 8px;">Aula ativa</h2>
             <div class="muted" id="ativa-info">Carregando…</div>
@@ -243,7 +234,6 @@
             </div>
           </section>
 
-          <!-- ALUNOS -->
           <section id="page-alunos" class="card section" style="display:none;">
             <h2 style="margin:0 0 8px;">Alunos</h2>
             <div class="muted">Cadastrar e listar alunos.</div>
@@ -272,7 +262,6 @@
             </div>
           </section>
 
-          <!-- HISTÓRICO -->
           <section id="page-historico" class="card section" style="display:none;">
             <h2 style="margin:0 0 8px;">Histórico</h2>
             <div class="muted">Você pode entrar na aula ativa por aqui também.</div>
@@ -299,9 +288,12 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js"></script>
+  <!-- ✅ Caminho correto -->
+  <script src="/static/app.js"></script>
+
   <script>
     if ("serviceWorker" in navigator) {
+      // ✅ Mantém /sw.js (servido pelo backend)
       navigator.serviceWorker.register("/sw.js");
     }
   </script>
