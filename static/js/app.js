@@ -1,3 +1,4 @@
+window.__IEQ_APP_STARTED = true;
 const API = "/api";
 const $ = (id) => document.getElementById(id);
 
