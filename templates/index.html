@@ -88,6 +88,9 @@
       <h2 style="margin:0 0 6px;">Kid IEQ 2026</h2>
       <div class="muted">IEQ Central • Ministério Infantil</div>
       <div id="loading-status" style="margin-top:10px; font-weight:900;">Iniciando...</div>
+      <div class="muted" style="margin-top:10px; font-size:12px;">
+        Se travar aqui, normalmente é app.js não carregando ou erro no JS.
+      </div>
     </div>
   </div>
 
@@ -288,13 +291,21 @@
     </div>
   </div>
 
-  <!-- ✅ Caminho correto -->
-  <script src="/static/app.js"></script>
+  <!-- app.js -->
+  <script src="/static/app.js?v=20260210"></script>
 
   <script>
+    // 🧠 Detector: se o app.js não rodar, ele avisa.
+    setTimeout(() => {
+      if (!window.__IEQ_APP_STARTED) {
+        const s = document.getElementById("loading-status");
+        if (s) s.textContent = "ERRO: app.js não iniciou (404, cache, ou erro JS). Abra /static/app.js no navegador.";
+      }
+    }, 3000);
+
+    // ✅ Correção do SW (no seu projeto ele está em /static/sw.js)
     if ("serviceWorker" in navigator) {
-      // ✅ Mantém /sw.js (servido pelo backend)
-      navigator.serviceWorker.register("/sw.js");
+      navigator.serviceWorker.register("/static/sw.js").catch(() => {});
     }
   </script>
 </body>
