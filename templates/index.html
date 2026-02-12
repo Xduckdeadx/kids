@@ -3,26 +3,133 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>IEQ Central • Kid 2026</title>
+  <meta name="theme-color" content="#0b1220" />
 
   <!-- PWA -->
-  <link rel="manifest" href="/static/manifest.json" />
-  <meta name="theme-color" content="#3b82f6" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
-  <!-- CSS -->
+  <title>IEQ Central • Kid 2026</title>
+
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" href="/static/images/icon-192.png" />
+  <link rel="apple-touch-icon" href="/static/images/icon-192.png" />
+
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
-<body>
-  <div id="app"></div>
 
-  <script src="/static/js/app.js"></script>
+<body>
+  <!-- Toast -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <!-- LOGIN -->
+  <main id="login" class="login" style="display:none">
+    <section class="login-card">
+      <div class="login-brand">
+        <div class="brand-mark" aria-hidden="true">IEQ</div>
+        <div class="brand-text">
+          <div class="brand-title">IEQ Central</div>
+          <div class="brand-sub">Ministério Infantil • Kid 2026</div>
+        </div>
+      </div>
+
+      <div class="login-form">
+        <label class="field" for="login-user">
+          <span>Usuário</span>
+          <input id="login-user" type="text" autocomplete="username" placeholder="Seu usuário" />
+        </label>
+
+        <label class="field" for="login-pass">
+          <span>Senha</span>
+          <input id="login-pass" type="password" autocomplete="current-password" placeholder="Sua senha" />
+        </label>
+
+        <button id="btn-login" class="btn primary btn-full">Entrar</button>
+
+        <div id="login-error" class="login-error" role="alert"></div>
+
+        <div class="login-foot">
+          <span class="muted">© IEQ Central • Sistema interno</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- APP -->
+  <div id="app" class="shell" style="display:none">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="side-top">
+        <button id="btn-burger" class="icon-btn" aria-label="Abrir/Fechar menu">
+          ☰
+        </button>
+
+        <div class="side-brand">
+          <div class="side-title">IEQ Central</div>
+          <div class="side-sub">Kid 2026</div>
+        </div>
+      </div>
+
+      <div class="side-user">
+        <div class="avatar" aria-hidden="true">A</div>
+        <div class="who">
+          <div class="who-name">Administrador</div>
+          <div class="who-role muted">ADMIN</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-btn active" data-page="home">🏠 <span>Home</span></button>
+        <button class="nav-btn" data-page="aulas">🎓 <span>Iniciar aula</span></button>
+        <button class="nav-btn" data-page="ativa">✅ <span>Aula ativa</span></button>
+        <button class="nav-btn" data-page="alunos">🧒 <span>Alunos</span></button>
+        <button class="nav-btn" data-page="historico">🗂️ <span>Histórico</span></button>
+        <button class="nav-btn" data-page="assistente">🧠 <span>Assistente</span></button>
+        <button class="nav-btn" data-page="mural">📌 <span>Mural</span></button>
+        <button class="nav-btn" data-page="equipe">👥 <span>Equipe</span></button>
+        <button class="nav-btn" data-page="config">⚙️ <span>Config</span></button>
+      </nav>
+
+      <div class="side-foot">
+        <button id="btn-logout" class="btn danger btn-full">Sair</button>
+        <div class="muted small">v1.0 • IEQ Central</div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <section class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="topbar-title" id="header-title">Home</div>
+          <div class="topbar-sub" id="header-meta">Visão geral e status do sistema</div>
+        </div>
+
+        <div class="topbar-right">
+          <button id="btn-refresh" class="btn">Atualizar</button>
+        </div>
+      </header>
+
+      <main id="page-host" class="content"></main>
+    </section>
+  </div>
 
   <script>
-    // registra SW se existir
+    // Sidebar toggle (visual only)
+    document.addEventListener("DOMContentLoaded", () => {
+      const btn = document.getElementById("btn-burger");
+      const side = document.getElementById("sidebar");
+      if (btn && side) {
+        btn.addEventListener("click", () => side.classList.toggle("collapsed"));
+      }
+    });
+  </script>
+
+  <script src="/static/js/app.js"></script>
+  <script>
+    // Service Worker (PWA)
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(() => {});
+        navigator.serviceWorker.register("/static/sw.js").catch(() => {});
       });
     }
   </script>
