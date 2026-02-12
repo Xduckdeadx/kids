@@ -26,6 +26,10 @@
   --focus: 0 0 0 3px rgba(47,109,246,0.22);
 
   --font: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+
+  /* ✅ controla o tamanho real da sidebar no GRID */
+  --sidebar-w: 280px;
+  --sidebar-w-collapsed: 84px;
 }
 
 /* Dark theme overrides */
@@ -210,7 +214,9 @@ textarea { resize: vertical; }
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 280px 1fr;
+
+  /* ✅ o grid passa a obedecer o colapso */
+  grid-template-columns: var(--sidebar-w) 1fr;
 }
 
 /* Sidebar */
@@ -288,17 +294,25 @@ textarea { resize: vertical; }
   gap: 10px;
 }
 
-/* Collapsed sidebar */
+/* ✅ Collapsed sidebar (agora muda o GRID também) */
+.shell:has(.sidebar.collapsed) {
+  grid-template-columns: var(--sidebar-w-collapsed) 1fr;
+}
+
+/* fallback caso o :has não exista (Chrome tem, Edge tem, mas por segurança) */
 .sidebar.collapsed {
-  width: 84px;
   padding: 16px 10px;
 }
+
+/* some com textos na sidebar minimizada */
 .sidebar.collapsed .side-brand,
 .sidebar.collapsed .who,
 .sidebar.collapsed .nav-btn span,
 .sidebar.collapsed .side-foot .small {
   display: none;
 }
+
+/* centraliza botões no modo minimizado */
 .sidebar.collapsed .nav-btn {
   justify-content: center;
 }
@@ -361,15 +375,40 @@ textarea { resize: vertical; }
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-3 { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ✅ Mobile: sidebar vira “overlay” e não ocupa a tela inteira */
 @media (max-width: 820px) {
   .shell { grid-template-columns: 1fr; }
+
   .sidebar {
-    position: relative;
-    height: auto;
-    border-right: none;
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    width: 280px;
+    z-index: 50;
+    transform: translateX(-110%);
+    transition: transform .2s ease;
+    border-right: 1px solid rgba(255,255,255,0.07);
   }
+
+  /* no mobile: quando NÃO está collapsed, aparece */
+  .sidebar:not(.collapsed) {
+    transform: translateX(0);
+  }
+
+  /* no mobile: collapsed = escondido */
+  .sidebar.collapsed {
+    transform: translateX(-110%);
+  }
+
+  .main {
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
+
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-  .topbar { position: relative; }
+  .topbar { position: sticky; }
 }
 
 /* Stats */
