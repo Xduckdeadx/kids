@@ -23,10 +23,9 @@ def _env(name: str, default: str = "") -> str:
 DB_CONFIG = {
     "host": _env("DB_HOST"),
     "port": _env("DB_PORT", "5432"),
-    "dbname": _env("DB_NAME", "postgres"),
-    "user": _env("DB_USER", "postgres"),
-    "password": _env("DB_PASSWORD"),
-    "sslmode": _env("DB_SSLMODE", "require"),
+    "dbname": _env("DB_NAME"),
+    "user": _env("DB_USER"),
+    "password": _env("DB_PASS"),
 }
 
 def db():
@@ -40,14 +39,18 @@ def db():
         # Importantíssimo: tirar \n e espaços (teu erro do sslmode veio disso)
         return psycopg2.connect(database_url.strip(), cursor_factory=RealDictCursor)
 
-    if not DB_CONFIG["host"] or not DB_CONFIG["password"]:
-        raise RuntimeError("DATABASE_URL não configurada e DB_* incompleto.")
+    if not DB_CONFIG["host"] or not DB_CONFIG["dbname"] or not DB_CONFIG["user"]:
+        raise Exception("DB não configurado. Use DATABASE_URL ou DB_HOST/DB_NAME/DB_USER/DB_PASS.")
 
-    # psycopg2 não aceita sslmode com quebra de linha, então strip
-    cfg = DB_CONFIG.copy()
-    cfg["sslmode"] = (cfg.get("sslmode") or "require").strip()
-    return psycopg2.connect(cursor_factory=RealDictCursor, **cfg)
-
+    return psycopg2.connect(
+        host=DB_CONFIG["host"],
+        port=DB_CONFIG["port"],
+        dbname=DB_CONFIG["dbname"],
+        user=DB_CONFIG["user"],
+        password=DB_CONFIG["password"],
+        cursor_factory=RealDictCursor,
+        sslmode=_env("DB_SSLMODE", "prefer"),
+    )
 
 def ensure_tables():
     conn = db()
@@ -72,6 +75,28 @@ def ensure_tables():
         nome TEXT UNIQUE NOT NULL,
         criado_em TIMESTAMP NOT NULL DEFAULT NOW()
     );
+    """)
+
+    # Responsáveis autorizados por aluno
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS responsaveis (
+        id SERIAL PRIMARY KEY,
+        id_aluno INT NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+        nome TEXT NOT NULL,
+        criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    """)
+    # unicidade (id_aluno,nome)
+    cur.execute("""
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_indexes
+            WHERE schemaname='public' AND indexname='ux_responsavel_aluno_nome'
+        ) THEN
+            CREATE UNIQUE INDEX ux_responsavel_aluno_nome ON responsaveis (id_aluno, nome);
+        END IF;
+    END $$;
     """)
 
     # Aulas
@@ -122,7 +147,6 @@ def ensure_tables():
     conn.commit()
     cur.close()
     conn.close()
-
 
 # =========================
 # Helpers / Auth
@@ -175,15 +199,14 @@ def require_role(*roles):
     def deco(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
-            user = getattr(request, "user", None)
-            if not user:
+            u = getattr(request, "user", None)
+            if not u:
                 return api_error("Não autenticado", 401)
-            if user.get("role") not in roles:
+            if u.get("role") not in roles:
                 return api_error("Sem permissão", 403)
             return fn(*args, **kwargs)
         return wrapper
     return deco
-
 
 # =========================
 # Static / Home
@@ -210,7 +233,6 @@ def diag():
         return jsonify({"ok": True, "static_files": sorted(items)})
     except Exception as e:
         return api_error("diag falhou", 500, e)
-
 
 # =========================
 # Auth
@@ -245,6 +267,10 @@ def login():
     except Exception as e:
         return api_error("Erro no login", 500, e)
 
+@app.get("/api/me")
+@require_auth
+def me():
+    return jsonify({"ok": True, "user": request.user})
 
 # =========================
 # Estatísticas (orig)
@@ -289,7 +315,6 @@ def estatisticas():
 @require_auth
 def stats_alias():
     return estatisticas()
-
 
 # =========================
 # Alunos
@@ -345,6 +370,71 @@ def alunos_delete(aluno_id):
     except Exception as e:
         return api_error("Erro ao excluir aluno", 500, e)
 
+# =========================
+# Responsáveis (autorizados a retirar)
+# =========================
+
+@app.get("/api/alunos/<int:aluno_id>/responsaveis")
+@require_auth
+def responsaveis_listar(aluno_id):
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, nome FROM responsaveis WHERE id_aluno=%s ORDER BY nome ASC",
+            (aluno_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": True, "responsaveis": rows})
+    except Exception as e:
+        return api_error("Erro ao listar responsáveis", 500, e)
+
+@app.post("/api/alunos/<int:aluno_id>/responsaveis")
+@require_auth
+@require_role("admin", "professor", "auxiliar")
+def responsaveis_criar(aluno_id):
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        nome = (body.get("nome") or "").strip()
+        if not nome:
+            return api_error("Nome do responsável é obrigatório", 400)
+
+        conn = db()
+        cur = conn.cursor()
+
+        cur.execute("SELECT id FROM alunos WHERE id=%s", (aluno_id,))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return api_error("Aluno não encontrado", 404)
+
+        cur.execute(
+            "INSERT INTO responsaveis (id_aluno, nome) VALUES (%s,%s) ON CONFLICT (id_aluno,nome) DO NOTHING RETURNING id",
+            (aluno_id, nome),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": True, "id": row["id"] if row else None})
+    except Exception as e:
+        return api_error("Erro ao cadastrar responsável", 500, e)
+
+@app.delete("/api/alunos/<int:aluno_id>/responsaveis/<int:resp_id>")
+@require_auth
+@require_role("admin", "professor", "auxiliar")
+def responsaveis_delete(aluno_id, resp_id):
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM responsaveis WHERE id=%s AND id_aluno=%s", (resp_id, aluno_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return api_error("Erro ao excluir responsável", 500, e)
 
 # =========================
 # Equipe (orig) + Alias /usuarios (front)
@@ -352,6 +442,7 @@ def alunos_delete(aluno_id):
 
 @app.get("/api/equipe")
 @require_auth
+@require_role("admin")
 def equipe_listar():
     try:
         conn = db()
@@ -360,9 +451,15 @@ def equipe_listar():
         rows = cur.fetchall()
         cur.close()
         conn.close()
-        return jsonify({"ok": True, "equipe": rows})
+        return jsonify({"ok": True, "usuarios": rows})
     except Exception as e:
         return api_error("Erro ao listar equipe", 500, e)
+
+@app.get("/api/usuarios")
+@require_auth
+@require_role("admin")
+def usuarios_alias():
+    return equipe_listar()
 
 @app.post("/api/equipe")
 @require_auth
@@ -376,64 +473,127 @@ def equipe_criar():
         role = (body.get("role") or "auxiliar").strip()
 
         if not usuario or not senha or not nome:
-            return api_error("usuario, senha e nome obrigatórios")
+            return api_error("usuario, senha e nome são obrigatórios", 400)
 
         if role not in ("admin", "professor", "auxiliar"):
-            return api_error("role inválida")
+            role = "auxiliar"
 
         conn = db()
         cur = conn.cursor()
         cur.execute(
-            """
-            INSERT INTO usuarios (usuario, senha, nome, role)
-            VALUES (%s,%s,%s,%s)
-            ON CONFLICT (usuario) DO NOTHING
-            RETURNING id
-            """,
+            "INSERT INTO usuarios (usuario, senha, nome, role) VALUES (%s,%s,%s,%s) RETURNING id",
             (usuario, senha, nome, role),
         )
-        row = cur.fetchone()
+        uid = cur.fetchone()["id"]
         conn.commit()
         cur.close()
         conn.close()
-
-        return jsonify({"ok": True, "id": row["id"] if row else None})
+        return jsonify({"ok": True, "id": int(uid)})
     except Exception as e:
-        return api_error("Erro ao cadastrar equipe", 500, e)
+        return api_error("Erro ao cadastrar membro", 500, e)
 
 @app.delete("/api/equipe/<int:user_id>")
 @require_auth
 @require_role("admin")
 def equipe_delete(user_id):
     try:
+        if user_id == 1:
+            return api_error("Não pode excluir admin padrão", 400)
         conn = db()
         cur = conn.cursor()
-        cur.execute("DELETE FROM usuarios WHERE id=%s AND usuario<>'admin'", (user_id,))
+        cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
         conn.commit()
         cur.close()
         conn.close()
         return jsonify({"ok": True})
     except Exception as e:
-        return api_error("Erro ao excluir usuário", 500, e)
+        return api_error("Erro ao excluir membro", 500, e)
 
-# ✅ Aliases para casar com /api/usuarios do teu app.js
-@app.get("/api/usuarios")
+# =========================
+# Avisos (Mural)
+# =========================
+
+@app.get("/api/avisos")
 @require_auth
-def usuarios_alias_list():
-    return equipe_listar()
+def avisos_listar():
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS avisos (
+                id SERIAL PRIMARY KEY,
+                mensagem TEXT NOT NULL,
+                autor TEXT NOT NULL,
+                fixado BOOLEAN NOT NULL DEFAULT FALSE,
+                data_criacao TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+        """)
+        cur.execute("SELECT * FROM avisos ORDER BY fixado DESC, data_criacao DESC LIMIT 200")
+        rows = cur.fetchall()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": True, "avisos": rows})
+    except Exception as e:
+        return api_error("Erro ao listar avisos", 500, e)
 
-@app.post("/api/usuarios")
+@app.post("/api/avisos")
+@require_auth
+def avisos_criar():
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        mensagem = (body.get("mensagem") or "").strip()
+        if not mensagem:
+            return api_error("Mensagem obrigatória", 400)
+
+        autor = (request.user.get("nome") or "Sistema").strip()
+
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO avisos (mensagem, autor) VALUES (%s,%s) RETURNING id",
+            (mensagem, autor),
+        )
+        aid = cur.fetchone()["id"]
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": True, "id": int(aid)})
+    except Exception as e:
+        return api_error("Erro ao criar aviso", 500, e)
+
+@app.post("/api/avisos/<int:aviso_id>/fixar")
 @require_auth
 @require_role("admin")
-def usuarios_alias_create():
-    return equipe_criar()
+def aviso_fixar(aviso_id):
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        fixado = bool(body.get("fixado", True))
 
-@app.delete("/api/usuarios/<int:user_id>")
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("UPDATE avisos SET fixado=%s WHERE id=%s", (fixado, aviso_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return api_error("Erro ao fixar aviso", 500, e)
+
+@app.delete("/api/avisos/<int:aviso_id>")
 @require_auth
 @require_role("admin")
-def usuarios_alias_delete(user_id):
-    return equipe_delete(user_id)
-
+def aviso_delete(aviso_id):
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM avisos WHERE id=%s", (aviso_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return api_error("Erro ao excluir aviso", 500, e)
 
 # =========================
 # Aulas
@@ -447,9 +607,25 @@ def aula_ativa():
         cur = conn.cursor()
         cur.execute("SELECT * FROM aulas WHERE encerrada_em IS NULL ORDER BY iniciada_em DESC LIMIT 1")
         row = cur.fetchone()
+
+        presenca = []
+        if row:
+            cur.execute(
+                """
+                SELECT f.id, f.id_aluno, a.nome as aluno,
+                       f.horario_entrada, f.horario_saida, COALESCE(f.retirado_por,'') as retirado_por
+                FROM frequencia f
+                JOIN alunos a ON a.id = f.id_aluno
+                WHERE f.id_aula = %s
+                ORDER BY a.nome ASC
+                """,
+                (row["id"],),
+            )
+            presenca = cur.fetchall()
+
         cur.close()
         conn.close()
-        return jsonify({"ok": True, "aula": row})
+        return jsonify({"ok": True, "aula": row, "presenca": presenca})
     except Exception as e:
         return api_error("Erro ao carregar aula ativa", 500, e)
 
@@ -459,14 +635,46 @@ def aula_ativa():
 def aula_iniciar():
     try:
         body = request.get_json(force=True, silent=True) or {}
-        professores = (body.get("professores") or "").strip()
         tema = (body.get("tema") or "").strip()
+        professores = (body.get("professores") or "").strip()
+        professor_id = body.get("professor_id")
+        auxiliar_id = body.get("auxiliar_id")
 
-        if not professores or not tema:
-            return api_error("Tema e professor são obrigatórios", 400)
+        if not tema:
+            return api_error("Tema é obrigatório", 400)
+
+        # Novo modo: escolher professor/auxiliar cadastrados
+        if (professor_id is not None) or (auxiliar_id is not None):
+            try:
+                professor_id = int(professor_id) if professor_id is not None else None
+                auxiliar_id = int(auxiliar_id) if auxiliar_id is not None else None
+            except Exception:
+                return api_error("professor_id/auxiliar_id inválido", 400)
+
+        if not professores and not professor_id:
+            return api_error("Professor é obrigatório (campo professores ou professor_id)", 400)
 
         conn = db()
         cur = conn.cursor()
+
+        # Se vierem IDs, monta o texto "professores" a partir do cadastro
+        if professor_id is not None or auxiliar_id is not None:
+            names = []
+            if professor_id is not None:
+                cur.execute("SELECT id, nome, role FROM usuarios WHERE id=%s", (professor_id,))
+                p = cur.fetchone()
+                if not p:
+                    cur.close(); conn.close()
+                    return api_error("Professor não encontrado", 404)
+                names.append(f"{p['nome']} (prof)")
+            if auxiliar_id is not None:
+                cur.execute("SELECT id, nome, role FROM usuarios WHERE id=%s", (auxiliar_id,))
+                a = cur.fetchone()
+                if not a:
+                    cur.close(); conn.close()
+                    return api_error("Auxiliar não encontrado", 404)
+                names.append(f"{a['nome']} (aux)")
+            professores = " • ".join(names)
 
         # Fecha alguma ativa (se existir) para não ficar duas abertas
         cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL")
@@ -500,23 +708,23 @@ def aula_encerrar():
 
 @app.post("/api/aulas/entrada")
 @require_auth
-def aulas_entrada():
-    """Entrada por (aula_id, aluno_id)"""
+@require_role("admin", "professor", "auxiliar")
+def aula_entrada():
     try:
         body = request.get_json(force=True, silent=True) or {}
         aula_id = body.get("aula_id")
         aluno_id = body.get("aluno_id")
         if not aula_id or not aluno_id:
-            return api_error("aula_id e aluno_id são obrigatórios")
+            return api_error("aula_id e aluno_id obrigatórios", 400)
 
         conn = db()
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO frequencia (id_aula, id_aluno, horario_entrada)
+            INSERT INTO frequencia (id_aula,id_aluno,horario_entrada)
             VALUES (%s,%s,NOW())
-            ON CONFLICT (id_aula, id_aluno)
-            DO UPDATE SET horario_entrada = COALESCE(frequencia.horario_entrada, NOW())
+            ON CONFLICT (id_aula,id_aluno)
+            DO UPDATE SET horario_entrada = COALESCE(frequencia.horario_entrada, EXCLUDED.horario_entrada)
             """,
             (aula_id, aluno_id),
         )
@@ -525,17 +733,12 @@ def aulas_entrada():
         conn.close()
         return jsonify({"ok": True})
     except Exception as e:
-        return api_error("Erro ao dar entrada", 500, e)
+        return api_error("Erro ao registrar entrada", 500, e)
 
 @app.post("/api/aulas/saida")
 @require_auth
-def aulas_saida():
-    """
-    ✅ Aceita:
-    - frequencia_id (modo antigo)
-    OU
-    - aula_id + aluno_id (modo do teu front)
-    """
+@require_role("admin", "professor", "auxiliar")
+def aula_saida():
     try:
         body = request.get_json(force=True, silent=True) or {}
         retirado_por = (body.get("retirado_por") or "").strip()
@@ -547,8 +750,31 @@ def aulas_saida():
         if not frequencia_id and (not aula_id or not aluno_id):
             return api_error("Envie frequencia_id OU aula_id + aluno_id", 400)
 
+        # Segurança: só permite saída com responsável cadastrado
+        if not retirado_por:
+            return api_error("Informe quem retirou (responsável).", 400)
+
         conn = db()
         cur = conn.cursor()
+        if frequencia_id and not aluno_id:
+            cur.execute("SELECT id_aluno FROM frequencia WHERE id=%s", (frequencia_id,))
+            fr = cur.fetchone()
+            if not fr:
+                cur.close(); conn.close()
+                return api_error("Registro de frequência não encontrado", 404)
+            aluno_id = fr["id_aluno"]
+
+        # precisa ter lista de responsáveis
+        cur.execute("SELECT 1 FROM responsaveis WHERE id_aluno=%s LIMIT 1", (aluno_id,))
+        has_resp = cur.fetchone() is not None
+        if not has_resp:
+            cur.close(); conn.close()
+            return api_error("Cadastre responsáveis desse aluno antes de liberar saída.", 400)
+
+        cur.execute("SELECT 1 FROM responsaveis WHERE id_aluno=%s AND nome=%s LIMIT 1", (aluno_id, retirado_por))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return api_error("Responsável não autorizado para este aluno.", 403)
 
         if frequencia_id:
             cur.execute(
@@ -582,7 +808,6 @@ def aulas_saida():
     except Exception as e:
         return api_error("Erro ao registrar saída", 500, e)
 
-
 # =========================
 # Frequência / Presença
 # =========================
@@ -615,7 +840,6 @@ def aulas_frequencia(aula_id):
 @app.get("/api/aulas/<int:aula_id>/presenca")
 @require_auth
 def aulas_presenca_alias(aula_id):
-    # devolve no mesmo shape mas com chave "presenca"
     resp = aulas_frequencia(aula_id)
     data = resp[0].get_json()
     return jsonify({"ok": True, "presenca": data.get("frequencia", [])})
@@ -651,6 +875,50 @@ def aulas_relatorio(aula_id):
     except Exception as e:
         return api_error("Erro ao gerar relatório", 500, e)
 
+@app.get("/api/aulas/<int:aula_id>/relatorio.csv")
+@require_auth
+def aulas_relatorio_csv(aula_id):
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM aulas WHERE id=%s", (aula_id,))
+        aula = cur.fetchone()
+        if not aula:
+            cur.close(); conn.close()
+            return api_error("Aula não encontrada", 404)
+
+        cur.execute(
+            """
+            SELECT a.nome as aluno,
+                   f.horario_entrada, f.horario_saida, COALESCE(f.retirado_por,'') as retirado_por
+            FROM frequencia f
+            JOIN alunos a ON a.id = f.id_aluno
+            WHERE f.id_aula=%s
+            ORDER BY a.nome ASC
+            """,
+            (aula_id,),
+        )
+        presenca = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        def esc(v):
+            s = "" if v is None else str(v)
+            s = s.replace('"', '""')
+            return f'"{s}"'
+
+        lines = []
+        lines.append("aula_id,data_aula,tema,professores")
+        lines.append(",".join([str(aula["id"]), esc(aula["data_aula"]), esc(aula["tema"]), esc(aula["professores"])]))
+        lines.append("")
+        lines.append("aluno,horario_entrada,horario_saida,retirado_por")
+        for p in presenca:
+            lines.append(",".join([esc(p["aluno"]), esc(p["horario_entrada"]), esc(p["horario_saida"]), esc(p["retirado_por"])]))
+
+        csv_text = "\n".join(lines)
+        return app.response_class(csv_text, mimetype="text/csv")
+    except Exception as e:
+        return api_error("Erro ao gerar CSV", 500, e)
 
 # =========================
 # Histórico
@@ -686,7 +954,6 @@ def historico_listar():
 @require_auth
 def historico_alias():
     return historico_listar()
-
 
 # =========================
 # Boot
