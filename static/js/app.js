@@ -1423,3 +1423,53 @@
   });
 
 })();
+// ===============================
+// PWA Install Button (PC + Celular)
+// ===============================
+(() => {
+  let deferredInstallPrompt = null;
+
+  const showInstallBtn = (show) => {
+    const btn = document.getElementById("btn-install");
+    if (!btn) return;
+    btn.style.display = show ? "inline-flex" : "none";
+  };
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    // Impede o mini-popup automático e guarda o evento
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    showInstallBtn(true);
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    showInstallBtn(false);
+  });
+
+  document.addEventListener("click", async (ev) => {
+    const btn = ev.target?.closest?.("#btn-install");
+    if (!btn) return;
+
+    if (!deferredInstallPrompt) {
+      alert('Instalação não disponível agora. No navegador, abra o menu e procure "Instalar app".');
+      return;
+    }
+
+    deferredInstallPrompt.prompt();
+    try {
+      await deferredInstallPrompt.userChoice;
+    } finally {
+      deferredInstallPrompt = null;
+      showInstallBtn(false);
+    }
+  });
+
+  // Se já está instalado (modo standalone), não mostra
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)")?.matches ||
+    window.navigator?.standalone === true;
+
+  if (isStandalone) showInstallBtn(false);
+})();
+
