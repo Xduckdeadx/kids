@@ -1,1666 +1,1425 @@
 /* static/js/app.js
    IEQ Central • Kid 2026
-   Frontend SPA sem framework (vanilla)
+   SPA sem framework
 */
 
 (() => {
   "use strict";
 
-  // ✅ Constantes
-  const APP_NAME = "IEQ Central";
-
-  // ========= Helpers =========
+  // =========================
+  // Helpers
+  // =========================
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-  const escapeHtml = (s) => {
-    const str = String(s ?? "");
-    return str
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  };
+  const escapeHtml = (str) =>
+    String(str ?? "").replace(/[&<>"']/g, (m) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    }[m]));
 
-  const fmtTS = (ts) => {
-    if (!ts) return "-";
+  const fmtDT = (v) => {
+    if (!v) return "";
     try {
-      const d = new Date(ts);
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) return String(v);
       return d.toLocaleString("pt-BR");
     } catch {
-      return String(ts);
+      return String(v);
     }
   };
 
-  const downloadFile = async (url, filename = "relatorio.csv") => {
-    const res = await fetch(url, { headers: API.authHeaders() });
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      UI.toast(`Falha ao baixar (${res.status})`, "err");
-      console.warn("download error:", t);
-      return;
-    }
-    const blob = await res.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  const toast = (msg, type="info") => {
+    const el = $("#toast");
+    if (!el) return;
+    el.textContent = msg;
+    el.dataset.type = type;
+    el.classList.add("show");
+    setTimeout(() => el.classList.remove("show"), 2800);
   };
 
-  // ========= API =========
+  // =========================
+  // Theme
+  // =========================
+  const Theme = {
+    key: "ieq_theme",
+    get() { return localStorage.getItem(this.key) || "light"; },
+    set(v) { localStorage.setItem(this.key, v); this.apply(); },
+    toggle() { this.set(this.get() === "dark" ? "light" : "dark"); },
+    apply() {
+      document.documentElement.dataset.theme = this.get();
+      const b = $("#btn-theme");
+      if (b) b.textContent = this.get() === "dark" ? "Modo claro" : "Modo escuro";
+    }
+  };
+
+  // =========================
+  // API
+  // =========================
   const API = {
     tokenKey: "ieq_token",
-    get token() { return localStorage.getItem(API.tokenKey) || ""; },
-    set token(v) { localStorage.setItem(API.tokenKey, v || ""); },
-    clearToken() { localStorage.removeItem(API.tokenKey); },
+    get token() { return localStorage.getItem(this.tokenKey) || ""; },
+    set token(v) { localStorage.setItem(this.tokenKey, v || ""); },
+    clearToken() { localStorage.removeItem(this.tokenKey); },
 
-    authHeaders() {
-      const h = {};
+    async request(path, { method="GET", body=null, headers={} } = {}) {
+      const h = { "Content-Type": "application/json", ...headers };
       if (API.token) h.Authorization = `Bearer ${API.token}`;
-      return h;
-    },
-
-    async request(path, { method = "GET", body = null, headers = {} } = {}) {
-      const h = { "Content-Type": "application/json", ...headers, ...API.authHeaders() };
       const opt = { method, headers: h };
       if (body) opt.body = JSON.stringify(body);
 
       const res = await fetch(path, opt);
-
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
       let data = null;
-      try { data = await res.json(); }
-      catch { data = { ok: false, error: "Resposta inválida do servidor." }; }
-
+      try {
+        data = ct.includes("application/json") ? await res.json() : { ok:false, error: await res.text() };
+      } catch {
+        data = { ok:false, error:"Resposta inválida do servidor." };
+      }
+      if (!res.ok && data && data.ok !== true) {
+        data.status = res.status;
+      }
       return data;
     },
 
-    // Auth
-    login(usuario, senha) { return API.request("/api/login", { method: "POST", body: { usuario, senha } }); },
-    me() { return API.request("/api/me"); },
-
-    // Stats
-    stats() { return API.request("/api/stats"); },
-
-    // Alunos
-    alunosList() { return API.request("/api/alunos"); },
-    alunoCreate(nome) { return API.request("/api/alunos", { method: "POST", body: { nome } }); },
-    alunoDelete(id) { return API.request(`/api/alunos/${id}`, { method: "DELETE" }); },
-
-    // Responsáveis
-    respList(alunoId) { return API.request(`/api/alunos/${alunoId}/responsaveis`); },
-    respCreate(alunoId, nome) { return API.request(`/api/alunos/${alunoId}/responsaveis`, { method: "POST", body: { nome } }); },
-    respDelete(alunoId, respId) { return API.request(`/api/alunos/${alunoId}/responsaveis/${respId}`, { method: "DELETE" }); },
-
-    // Usuários (admin)
-    usuariosList() { return API.request("/api/usuarios"); },
-    usuarioCreate(nome, usuario, senha, role) {
-      return API.request("/api/equipe", { method: "POST", body: { nome, usuario, senha, role } });
+    login(usuario, senha) {
+      return this.request("/api/login", { method:"POST", body:{ usuario, senha } });
     },
-    usuarioDelete(id) { return API.request(`/api/equipe/${id}`, { method: "DELETE" }); },
+    me() { return this.request("/api/me"); },
+    stats() { return this.request("/api/stats"); },
 
-    // Aulas
-    aulaAtiva() { return API.request("/api/aulas/ativa"); },
-    aulaIniciarManual(professores, tema) {
-      return API.request("/api/aulas/iniciar", { method: "POST", body: { professores, tema } });
-    },
-    aulaIniciarPorIds(professor_id, auxiliar_id, tema) {
-      return API.request("/api/aulas/iniciar", { method: "POST", body: { professor_id, auxiliar_id, tema } });
-    },
-    aulaEncerrar() { return API.request("/api/aulas/encerrar", { method: "POST", body: {} }); },
-    aulaEntrada(aula_id, aluno_id) {
-      return API.request("/api/aulas/entrada", { method: "POST", body: { aula_id, aluno_id } });
-    },
-    aulaSaida(aula_id, aluno_id, retirado_por) {
-      return API.request("/api/aulas/saida", { method: "POST", body: { aula_id, aluno_id, retirado_por } });
-    },
+    alunosList() { return this.request("/api/alunos"); },
+    alunoCreate(payload) { return this.request("/api/alunos", { method:"POST", body: payload }); },
+    alunoUpdate(id, payload) { return this.request(`/api/alunos/${id}`, { method:"PUT", body: payload }); },
+    alunoDelete(id) { return this.request(`/api/alunos/${id}`, { method:"DELETE" }); },
 
-    // Histórico
-    historico() { return API.request("/api/historico"); },
-    relatorio(aulaId) { return API.request(`/api/aulas/${aulaId}/relatorio`); },
+    usuariosList() { return this.request("/api/usuarios"); },
+    equipeCreate(payload) { return this.request("/api/equipe", { method:"POST", body: payload }); },
+    equipeDelete(id) { return this.request(`/api/equipe/${id}`, { method:"DELETE" }); },
 
-    // Mural
-    avisosList() { return API.request("/api/avisos"); },
-    avisoCreate(mensagem) { return API.request("/api/avisos", { method: "POST", body: { mensagem } }); },
-    avisoFixar(id, fixado) { return API.request(`/api/avisos/${id}/fixar`, { method: "POST", body: { fixado } }); },
-    avisoDelete(id) { return API.request(`/api/avisos/${id}`, { method: "DELETE" }); },
+    aulaIniciar(payload) { return this.request("/api/aulas/iniciar", { method:"POST", body: payload }); },
+    aulaAtiva() { return this.request("/api/aulas/ativa"); },
+    aulaEntrada(payload) { return this.request("/api/aulas/entrada", { method:"POST", body: payload }); },
+    aulaSaida(payload) { return this.request("/api/aulas/saida", { method:"POST", body: payload }); },
+    aulaEncerrar() { return this.request("/api/aulas/encerrar", { method:"POST" }); },
 
-    // ✅ Assistente IEQ
-    assistInsights(params = "") { return API.request(`/api/assistente/insights${params}`); },
-    assistTema(params = "") { return API.request(`/api/assistente/sugestao-tema${params}`); },
-    assistRelatorioNarrativo(aulaId) { return API.request(`/api/assistente/relatorio-narrativo?aula_id=${encodeURIComponent(aulaId)}`); },
+    historico() { return this.request("/api/historico"); },
+
+    avisosList() { return this.request("/api/avisos"); },
+    avisoCreate(payload) { return this.request("/api/avisos", { method:"POST", body: payload }); },
+    avisoFixar(id, fixado) { return this.request(`/api/avisos/${id}/fixar`, { method:"POST", body:{ fixado } }); },
+    avisoDelete(id) { return this.request(`/api/avisos/${id}`, { method:"DELETE" }); },
+    avisoLike(id) { return this.request(`/api/avisos/${id}/like`, { method:"POST" }); },
+    avisoComentar(id, comentario) { return this.request(`/api/avisos/${id}/comentario`, { method:"POST", body:{ comentario } }); },
+
+    assistInsights(limite_aulas, min_pct) {
+      const qs = new URLSearchParams({ limite_aulas: String(limite_aulas), min_pct: String(min_pct) });
+      return this.request(`/api/assistente/insights?${qs.toString()}`);
+    },
+    assistTema(janela) {
+      const qs = new URLSearchParams({ janela: String(janela) });
+      return this.request(`/api/assistente/sugestao-tema?${qs.toString()}`);
+    },
+    assistNarrativo(aula_id) {
+      const qs = new URLSearchParams({ aula_id: String(aula_id) });
+      return this.request(`/api/assistente/relatorio-narrativo?${qs.toString()}`);
+    }
   };
 
-  // ========= UI =========
-  const UI = {
-    root: null,
-
-    toast(text, type = "ok") {
-      const el = document.createElement("div");
-      el.style.position = "fixed";
-      el.style.right = "18px";
-      el.style.top = "18px";
-      el.style.zIndex = 99999;
-      el.style.padding = "12px 14px";
-      el.style.borderRadius = "12px";
-      el.style.fontWeight = "900";
-      el.style.boxShadow = "0 12px 30px rgba(0,0,0,.12)";
-      el.style.background = type === "err" ? "#ef4444" : "#16a34a";
-      el.style.color = "#fff";
-      el.textContent = text;
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 2400);
-    },
-
-    modal({ title = "Modal", bodyHtml = "", onClose = null, footerHtml = "" }) {
-      const wrap = document.createElement("div");
-      wrap.className = "modal";
-      wrap.innerHTML = `
-        <div class="modal-card">
-          <div class="modal-head">
-            <div class="modal-title">${escapeHtml(title)}</div>
-            <button class="iconbtn" data-x title="Fechar">✕</button>
-          </div>
-          <div class="modal-body">${bodyHtml}</div>
-          <div class="modal-foot">${footerHtml}</div>
-        </div>
-      `;
-      document.body.appendChild(wrap);
-
-      const close = () => {
-        wrap.remove();
-        if (typeof onClose === "function") onClose();
-      };
-
-      wrap.addEventListener("click", (e) => {
-        if (e.target === wrap) close();
-      });
-      wrap.querySelector("[data-x]").onclick = close;
-
-      return { el: wrap, close };
-    },
-
-    renderLogin() {
-      UI.root.innerHTML = `
-        <div class="login">
-          <div class="login-card">
-            <div class="brand">
-              <div class="brand-icon">👶</div>
-              <div>
-                <div class="brand-title">IEQ Central</div>
-                <div class="brand-sub">Ministério Infantil • Kid 2026</div>
-              </div>
-            </div>
-
-            <div class="form">
-              <label>Usuário</label>
-              <input id="l-user" placeholder="admin" />
-              <label>Senha</label>
-              <input id="l-pass" type="password" placeholder="1234" />
-              <div class="msg" id="l-msg"></div>
-              <button class="btn btn-primary" id="l-btn">Entrar</button>
-            </div>
-
-            <div class="login-foot">
-              <div class="pill">PWA • Offline parcial</div>
-              <div class="pill">Aulas • Presença • Relatório</div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      $("#l-btn").onclick = async () => {
-        const u = ($("#l-user").value || "").trim();
-        const p = ($("#l-pass").value || "").trim();
-        $("#l-msg").textContent = "";
-
-        if (!u || !p) { $("#l-msg").textContent = "Preencha usuário e senha."; return; }
-
-        const r = await API.login(u, p);
-        if (r.ok) {
-          API.token = r.token;
-          State.user = r.user;
-          UI.toast("Login OK ✅");
-          UI.renderAppShell();
-          goto("home");
-        } else {
-          $("#l-msg").textContent = r.error || "Falha no login.";
-        }
-      };
-    },
-
-    renderAppShell() {
-      UI.root.innerHTML = `
-        <div class="app">
-          <aside class="sidebar" id="sidebar">
-            <div class="side-top">
-              <div class="side-brand">
-                <div class="side-logo">👶</div>
-                <div>
-                  <div class="side-title">IEQ Central</div>
-                  <div class="side-sub">Kid 2026</div>
-                </div>
-              </div>
-
-              <div class="side-user">
-                <div class="avatar">${escapeHtml((State.user?.nome || "?").slice(0,1).toUpperCase())}</div>
-                <div>
-                  <div class="side-user-name">${escapeHtml(State.user?.nome || "-")}</div>
-                  <div class="side-user-role">${escapeHtml(State.user?.role || "-")}</div>
-                </div>
-              </div>
-
-              <div class="side-menu nav">
-                <button class="side-item active" data-page="home">🏠 Home</button>
-                <button class="side-item" data-page="aulas">🎓 Iniciar aula</button>
-                <button class="side-item" data-page="ativa">✅ Aula ativa</button>
-                <button class="side-item" data-page="alunos">👧 Alunos</button>
-                <button class="side-item" data-page="historico">🗂️ Histórico</button>
-                <button class="side-item" data-page="assistente">🧠 Assistente</button>
-                <button class="side-item" data-page="mural">📌 Mural</button>
-                <button class="side-item" data-page="equipe">👥 Equipe</button>
-                <button class="side-item" data-page="config">⚙️ Config</button>
-              </div>
-            </div>
-
-            <div class="side-bottom">
-              <button class="btn btn-outline" id="btn-logout" style="width:100%;">Sair</button>
-              <div class="side-ver">v1.0 • ${escapeHtml(APP_NAME)}</div>
-            </div>
-          </aside>
-
-          <main class="main">
-            <div class="topbar">
-              <div class="topbar-left">
-                <button class="iconbtn" id="btn-menu" title="Menu">☰</button>
-                <div>
-                  <div class="page-title" id="page-title">IEQ Central</div>
-                  <div class="page-sub" id="page-sub">—</div>
-                </div>
-              </div>
-              <div class="tag" id="pill-status">Status</div>
-            </div>
-
-            <div class="page" id="page"></div>
-          </main>
-        </div>
-      `;
-
-      $("#btn-logout").onclick = () => {
-        API.clearToken();
-        State.reset();
-        UI.renderLogin();
-      };
-
-      $("#btn-menu").onclick = () => {
-        const sb = $("#sidebar");
-        sb.classList.toggle("open");
-      };
-
-      $$(".nav button").forEach(b => {
-        b.onclick = () => goto(b.dataset.page);
-      });
-    },
-
-    setHeader(title, sub = "") {
-      $("#page-title").textContent = title;
-      $("#page-sub").textContent = sub;
-    },
-
-    setStatus(text, kind = "warn") {
-      const pill = $("#pill-status");
-      pill.textContent = text;
-      pill.classList.remove("ok", "warn");
-      pill.classList.add(kind);
-    },
-  };
-
-  // ========= State =========
+  // =========================
+  // State
+  // =========================
   const State = {
     user: null,
-    aulaAtiva: null,
+    stats: null,
     alunos: [],
     usuarios: [],
-    reset() {
-      State.user = null;
-      State.aulaAtiva = null;
-      State.alunos = [];
-      State.usuarios = [];
-    }
+    aulaAtiva: null,
+    presenca: [],
+    historico: [],
+    avisos: [],
+    page: "home",
+    alunoEditId: null,
   };
 
-  // ========= Router =========
-  async function goto(page) {
-    $("#sidebar")?.classList.remove("open");
-    $$(".nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
+  // =========================
+  // UI base (espera IDs no HTML)
+  // =========================
+  const UI = {
+    app: $("#app"),
+    login: $("#login"),
+    loginUser: $("#login-user"),
+    loginPass: $("#login-pass"),
+    btnLogin: $("#btn-login"),
+    loginError: $("#login-error"),
 
-    if (page === "home") return renderHome();
-    if (page === "aulas") return renderAulas();
-    if (page === "ativa") return renderAtiva();
-    if (page === "alunos") return renderAlunos();
-    if (page === "historico") return renderHistorico();
-    if (page === "assistente") return renderAssistente();
-    if (page === "mural") return renderMural();
-    if (page === "equipe") return renderEquipe();
-    if (page === "config") return renderConfig();
+    headerTitle: $("#header-title"),
+    headerMeta: $("#header-meta"),
+    btnRefresh: $("#btn-refresh"),
+    btnLogout: $("#btn-logout"),
 
-    renderHome();
+    navButtons: $$(".nav-btn"),
+    pageHost: $("#page-host"),
+  };
+
+  function setHeader(title, meta="") {
+    if (UI.headerTitle) UI.headerTitle.textContent = title || "IEQ Central";
+    if (UI.headerMeta) UI.headerMeta.textContent = meta || "";
   }
 
-  // ========= Pages =========
-
-  async function renderHome() {
-    UI.setHeader("Home", "Visão geral e status do sistema");
-    $("#page").innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Status</div>
-            <div class="card-sub">Resumo rápido</div>
-          </div>
-          <button class="btn btn-outline" id="btn-home-refresh">Atualizar</button>
-        </div>
-
-        <div class="grid stats" id="home-stats">
-          <div class="stat"><div class="stat-ico">👧</div><div class="stat-val">—</div><div class="stat-lab">Alunos</div></div>
-          <div class="stat"><div class="stat-ico">👥</div><div class="stat-val">—</div><div class="stat-lab">Equipe</div></div>
-          <div class="stat"><div class="stat-ico">🎓</div><div class="stat-val">—</div><div class="stat-lab">Aula ativa</div></div>
-          <div class="stat"><div class="stat-ico">✅</div><div class="stat-val">—</div><div class="stat-lab">Presentes</div></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Atalhos</div>
-            <div class="card-sub">Ir direto ao ponto</div>
-          </div>
-        </div>
-
-        <div class="grid quick">
-          <button class="quickbtn" id="q-start">
-            <i>🎓</i>
-            <div><div class="q-title">Iniciar aula</div><div class="q-sub">Selecione prof/aux e tema</div></div>
-          </button>
-          <button class="quickbtn" id="q-ativa">
-            <i>✅</i>
-            <div><div class="q-title">Aula ativa</div><div class="q-sub">Check-in e check-out</div></div>
-          </button>
-          <button class="quickbtn" id="q-ass">
-            <i>🧠</i>
-            <div><div class="q-title">Assistente</div><div class="q-sub">Insights e relatório narrativo</div></div>
-          </button>
-        </div>
-      </div>
-    `;
-
-    $("#q-start").onclick = () => goto("aulas");
-    $("#q-ativa").onclick = () => goto("ativa");
-    $("#q-ass").onclick = () => goto("assistente");
-    $("#btn-home-refresh").onclick = () => renderHome();
-
-    const st = await API.stats();
-    if (!st.ok) {
-      UI.setStatus("Erro", "warn");
-      UI.toast(st.error || "Falha ao carregar stats", "err");
-      return;
-    }
-
-    UI.setStatus(st.aula_ativa ? "Aula ativa" : "Sem aula ativa", st.aula_ativa ? "ok" : "warn");
-
-    const vals = [
-      st.total_alunos ?? "-",
-      st.total_equipe ?? "-",
-      st.aula_ativa ? "Sim" : "Não",
-      st.presentes ?? "-"
-    ];
-    $$("#home-stats .stat-val").forEach((el, i) => el.textContent = String(vals[i] ?? "-"));
+  function showLogin(msg="") {
+    if (UI.app) UI.app.style.display = "none";
+    if (UI.login) UI.login.style.display = "block";
+    if (UI.loginError) UI.loginError.textContent = msg || "";
   }
 
-  async function renderAlunos() {
-    UI.setHeader("Alunos", "Cadastrar alunos e responsáveis autorizados");
-    $("#page").innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Cadastrar aluno</div>
-            <div class="card-sub">Nome único</div>
-          </div>
-        </div>
+  function showApp() {
+    if (UI.login) UI.login.style.display = "none";
+    if (UI.app) UI.app.style.display = "block";
+  }
 
-        <div class="toolbar">
-          <div class="search">
-            <span>👧</span>
-            <input id="al-nome" placeholder="Nome do aluno" />
-          </div>
-          <button class="btn btn-primary" id="al-add">Cadastrar</button>
-          <button class="btn btn-outline" id="al-refresh">Atualizar</button>
-        </div>
+  function setActiveNav(page) {
+    UI.navButtons.forEach(b => b.classList.toggle("active", b.dataset.page === page));
+  }
 
-        <div class="hint" id="al-msg"></div>
-      </div>
+  function goto(page) {
+    State.page = page;
+    setActiveNav(page);
 
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Lista</div>
-            <div class="card-sub">Gerencie responsáveis e exclusões</div>
-          </div>
-        </div>
-
-        <div class="toolbar">
-          <div class="search">
-            <span>🔎</span>
-            <input id="al-q" placeholder="Pesquisar..." />
-          </div>
-        </div>
-
-        <div class="list" id="al-list"></div>
-      </div>
-    `;
-
-    $("#al-add").onclick = async () => {
-      const nome = ($("#al-nome").value || "").trim();
-      $("#al-msg").textContent = "";
-      if (!nome) { $("#al-msg").textContent = "Digite o nome do aluno."; return; }
-
-      const r = await API.alunoCreate(nome);
-      if (r.ok) {
-        UI.toast("Aluno cadastrado ✅");
-        $("#al-nome").value = "";
-        await loadAlunos();
-        paintAlunos();
-      } else {
-        $("#al-msg").textContent = r.error || "Erro ao cadastrar.";
-      }
+    const titles = {
+      home: ["Home", "Visão geral e status do sistema"],
+      aulas: ["Iniciar aula", "Selecione prof/aux e tema"],
+      ativa: ["Aula ativa", "Check-in e check-out com segurança"],
+      alunos: ["Alunos", "Cadastro completo, foto e responsáveis"],
+      historico: ["Histórico", "Relatórios por aula"],
+      assistente: ["Assistente", "Insights, sugestão de tema e relatório narrativo"],
+      mural: ["Mural", "Avisos com imagem, likes e comentários"],
+      equipe: ["Equipe", "Somente admin gerencia usuários"],
+      config: ["Config", "Diagnóstico e preferências do app"],
     };
 
-    $("#al-refresh").onclick = async () => {
-      await loadAlunos();
-      paintAlunos();
-    };
-
-    $("#al-q").oninput = () => paintAlunos();
-
-    await loadAlunos();
-    paintAlunos();
-  }
-
-  async function loadAlunos() {
-    const r = await API.alunosList();
-    if (!r.ok) {
-      UI.toast(r.error || "Erro ao listar alunos", "err");
-      State.alunos = [];
-      return;
-    }
-    State.alunos = r.alunos || [];
-  }
-
-  function paintAlunos() {
-    const box = $("#al-list");
-    const q = ($("#al-q").value || "").trim().toLowerCase();
-
-    const rows = (State.alunos || [])
-      .filter(a => !q || (a.nome || "").toLowerCase().includes(q))
-      .map(a => `
-        <div class="item">
-          <div class="item-left">
-            <div>
-              <div class="item-title">${escapeHtml(a.nome)}</div>
-              <div class="item-sub">ID: ${a.id}</div>
-            </div>
-          </div>
-          <div class="item-actions">
-            <button class="btn btn-outline" data-resp="${a.id}">Responsáveis</button>
-            <button class="btn btn-danger" data-del="${a.id}">Excluir</button>
-          </div>
-        </div>
-      `).join("");
-
-    box.innerHTML = rows || `<div class="hint">Nenhum aluno.</div>`;
-
-    $$("[data-del]").forEach(btn => {
-      btn.onclick = async () => {
-        const id = btn.getAttribute("data-del");
-        if (!confirm("Excluir este aluno?")) return;
-        const r = await API.alunoDelete(id);
-        if (r.ok) {
-          UI.toast("Aluno excluído");
-          await loadAlunos();
-          paintAlunos();
-        } else {
-          UI.toast(r.error || "Erro ao excluir", "err");
-        }
-      };
-    });
-
-    $$("[data-resp]").forEach(btn => {
-      btn.onclick = async () => {
-        const alunoId = btn.getAttribute("data-resp");
-        const aluno = State.alunos.find(x => String(x.id) === String(alunoId));
-        await openResponsaveisModal(alunoId, aluno?.nome || "Aluno");
-      };
-    });
-  }
-
-  async function openResponsaveisModal(alunoId, alunoNome) {
-    const modal = UI.modal({
-      title: `Responsáveis • ${alunoNome}`,
-      bodyHtml: `
-        <div class="field">
-          <label>Novo responsável</label>
-          <input id="r-nome" placeholder="Ex: Mãe, Pai, Avó..." />
-        </div>
-        <div style="height:10px;"></div>
-        <div class="toolbar">
-          <button class="btn btn-primary" id="r-add">Adicionar</button>
-          <button class="btn btn-outline" id="r-refresh">Atualizar</button>
-        </div>
-        <div class="hint" id="r-msg"></div>
-        <div style="height:8px;"></div>
-        <div class="list" id="r-list"></div>
-      `,
-      footerHtml: `<button class="btn btn-outline" data-close>Fechar</button>`
-    });
-
-    modal.el.querySelector("[data-close]").onclick = modal.close;
-
-    async function refresh() {
-      $("#r-msg").textContent = "Carregando…";
-      const r = await API.respList(alunoId);
-      if (!r.ok) {
-        $("#r-msg").textContent = r.error || "Erro ao listar.";
-        $("#r-list").innerHTML = "";
-        return;
-      }
-      const list = r.responsaveis || [];
-      $("#r-msg").textContent = list.length ? "" : "Nenhum responsável cadastrado (saída ficará bloqueada).";
-      $("#r-list").innerHTML = list.map(x => `
-        <div class="item">
-          <div class="item-left">
-            <div>
-              <div class="item-title">${escapeHtml(x.nome)}</div>
-              <div class="item-sub">ID: ${x.id}</div>
-            </div>
-          </div>
-          <div class="item-actions">
-            <button class="btn btn-danger" data-rdel="${x.id}">Excluir</button>
-          </div>
-        </div>
-      `).join("") || `<div class="hint">Cadastre pelo menos 1 responsável.</div>`;
-
-      $$("[data-rdel]").forEach(b => {
-        b.onclick = async () => {
-          const rid = b.getAttribute("data-rdel");
-          if (!confirm("Excluir responsável?")) return;
-          const rr = await API.respDelete(alunoId, rid);
-          if (rr.ok) { UI.toast("Excluído"); refresh(); }
-          else UI.toast(rr.error || "Erro", "err");
-        };
-      });
-    }
-
-    $("#r-add").onclick = async () => {
-      const nome = ($("#r-nome").value || "").trim();
-      if (!nome) { $("#r-msg").textContent = "Digite o nome do responsável."; return; }
-      const r = await API.respCreate(alunoId, nome);
-      if (r.ok) {
-        UI.toast("Responsável adicionado ✅");
-        $("#r-nome").value = "";
-        refresh();
-      } else {
-        $("#r-msg").textContent = r.error || "Erro ao adicionar.";
-      }
-    };
-
-    $("#r-refresh").onclick = refresh;
-    refresh();
-  }
-
-  async function renderEquipe() {
-    UI.setHeader("Equipe", "Somente admin gerencia usuários");
-    const isAdmin = State.user?.role === "admin";
-
-    $("#page").innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Lista</div>
-            <div class="card-sub">${isAdmin ? "Gerencie logins e permissões." : "Você não é admin. Somente visual."}</div>
-          </div>
-          <button class="btn btn-outline" id="u-refresh">Atualizar</button>
-        </div>
-
-        <div class="hint" id="u-msg"></div>
-        <div class="list" id="u-list"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Cadastrar membro</div>
-            <div class="card-sub">Admin apenas</div>
-          </div>
-        </div>
-
-        <div class="grid2">
-          <div class="field">
-            <label>Nome</label>
-            <input id="u-nome" ${isAdmin ? "" : "disabled"} />
-          </div>
-          <div class="field">
-            <label>Usuário (login)</label>
-            <input id="u-user" ${isAdmin ? "" : "disabled"} />
-          </div>
-          <div class="field">
-            <label>Senha</label>
-            <input id="u-pass" type="password" ${isAdmin ? "" : "disabled"} />
-          </div>
-          <div class="field">
-            <label>Role</label>
-            <select id="u-role" ${isAdmin ? "" : "disabled"}>
-              <option value="professor">professor</option>
-              <option value="auxiliar">auxiliar</option>
-              <option value="admin">admin</option>
-            </select>
-          </div>
-        </div>
-
-        <div style="height:12px;"></div>
-        <button class="btn btn-primary" id="u-add" ${isAdmin ? "" : "disabled"}>Cadastrar</button>
-        <div class="hint" id="u-addmsg"></div>
-      </div>
-    `;
-
-    $("#u-refresh").onclick = async () => {
-      await loadUsuariosAdmin();
-      paintUsuarios();
-    };
-
-    if (isAdmin) {
-      $("#u-add").onclick = async () => {
-        const nome = ($("#u-nome").value || "").trim();
-        const usuario = ($("#u-user").value || "").trim();
-        const senha = ($("#u-pass").value || "").trim();
-        const role = ($("#u-role").value || "auxiliar").trim();
-        $("#u-addmsg").textContent = "";
-
-        if (!nome || !usuario || !senha) {
-          $("#u-addmsg").textContent = "Preencha nome, usuário e senha.";
-          return;
-        }
-
-        const r = await API.usuarioCreate(nome, usuario, senha, role);
-        if (r.ok) {
-          UI.toast("Usuário criado ✅");
-          $("#u-nome").value = "";
-          $("#u-user").value = "";
-          $("#u-pass").value = "";
-          await loadUsuariosAdmin();
-          paintUsuarios();
-        } else {
-          $("#u-addmsg").textContent = r.error || "Erro ao cadastrar.";
-        }
-      };
-    }
-
-    await loadUsuariosAdmin();
-    paintUsuarios();
-  }
-
-  async function loadUsuariosAdmin() {
-    const el = $("#u-msg");
-    if (el) el.textContent = "Carregando…";
-    const r = await API.usuariosList();
-    if (!r.ok) {
-      if (el) el.textContent = r.error || "Sem permissão (somente admin).";
-      State.usuarios = [];
-      return;
-    }
-    State.usuarios = r.usuarios || [];
-    if (el) el.textContent = "";
-  }
-
-  function paintUsuarios() {
-    const box = $("#u-list");
-    if (!box) return;
-    const isAdmin = State.user?.role === "admin";
-    box.innerHTML = (State.usuarios || []).map(u => `
-      <div class="item">
-        <div class="item-left">
-          <div>
-            <div class="item-title">${escapeHtml(u.nome)} <span class="tag">${escapeHtml(u.role)}</span></div>
-            <div class="item-sub">@${escapeHtml(u.usuario)}</div>
-          </div>
-        </div>
-        <div class="item-actions">
-          ${isAdmin && u.usuario !== "admin" ? `<button class="btn btn-danger" data-udel="${u.id}">Excluir</button>` : `<span class="tag">—</span>`}
-        </div>
-      </div>
-    `).join("") || `<div class="hint">Nenhum usuário.</div>`;
-
-    $$("[data-udel]").forEach(b => {
-      b.onclick = async () => {
-        const id = b.getAttribute("data-udel");
-        if (!confirm("Excluir usuário?")) return;
-        const r = await API.usuarioDelete(id);
-        if (r.ok) { UI.toast("Excluído"); await loadUsuariosAdmin(); paintUsuarios(); }
-        else UI.toast(r.error || "Erro", "err");
-      };
-    });
-  }
-
-  async function renderAulas() {
-    UI.setHeader("Iniciar aula", "Escolha professor, auxiliar e tema");
-
-    $("#page").innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Nova aula</div>
-            <div class="card-sub">Ao iniciar, a aula fica ativa para toda a equipe.</div>
-          </div>
-          <button class="btn btn-outline" id="a-check">Ver aula ativa</button>
-        </div>
-
-        <div class="hint" id="a-hint">
-          Se você for admin, dá pra usar lista de equipe. Se não, use modo manual (texto).
-        </div>
-
-        <div class="grid2">
-          <div class="field">
-            <label>Professor (modo lista - admin)</label>
-            <select id="a-prof-sel">
-              <option value="">(modo manual)</option>
-            </select>
-            <div class="small">Se não aparecer, use modo manual abaixo.</div>
-          </div>
-          <div class="field">
-            <label>Auxiliar (modo lista - admin)</label>
-            <select id="a-aux-sel">
-              <option value="">(sem auxiliar)</option>
-            </select>
-          </div>
-        </div>
-
-        <div style="height:12px;"></div>
-
-        <div class="grid2">
-          <div class="field">
-            <label>Professor (modo manual)</label>
-            <input id="a-prof-txt" placeholder="Ex: Prof. Maria" />
-          </div>
-          <div class="field">
-            <label>Auxiliar (modo manual)</label>
-            <input id="a-aux-txt" placeholder="Ex: Tia Ana" />
-          </div>
-        </div>
-
-        <div style="height:12px;"></div>
-
-        <div class="field">
-          <label>Tema</label>
-          <input id="a-tema" placeholder="Ex: O Bom Pastor" />
-        </div>
-
-        <div style="height:14px;"></div>
-
-        <div class="toolbar">
-          <button class="btn btn-primary" id="a-start">Iniciar aula</button>
-          <button class="btn btn-outline" id="a-go-ativa">Ir para Aula ativa</button>
-        </div>
-
-        <div class="hint" id="a-msg"></div>
-      </div>
-    `;
-
-    $("#a-check").onclick = () => goto("ativa");
-    $("#a-go-ativa").onclick = () => goto("ativa");
-
-    // tenta carregar usuários (admin) e preencher selects
-    await loadUsuariosAdmin();
-    fillProfessorAuxSelects();
-
-    $("#a-start").onclick = async () => {
-      const tema = ($("#a-tema").value || "").trim();
-      const msg = $("#a-msg");
-      msg.textContent = "";
-
-      if (!tema) { msg.textContent = "Tema é obrigatório."; return; }
-
-      const profId = ($("#a-prof-sel").value || "").trim();
-      const auxId = ($("#a-aux-sel").value || "").trim();
-
-      if (profId) {
-        const r = await API.aulaIniciarPorIds(profId, auxId || null, tema);
-        if (r.ok) {
-          UI.toast("Aula iniciada ✅");
-          goto("ativa");
-        } else {
-          msg.textContent = r.error || "Erro ao iniciar aula.";
-        }
-        return;
-      }
-
-      const prof = ($("#a-prof-txt").value || "").trim();
-      const aux = ($("#a-aux-txt").value || "").trim();
-
-      if (!prof) { msg.textContent = "Professor é obrigatório (modo manual)."; return; }
-
-      const professores = aux ? `${prof} (prof) • ${aux} (aux)` : `${prof} (prof)`;
-      const r = await API.aulaIniciarManual(professores, tema);
-
-      if (r.ok) {
-        UI.toast("Aula iniciada ✅");
-        goto("ativa");
-      } else {
-        msg.textContent = r.error || "Erro ao iniciar aula.";
-      }
-    };
-  }
-
-  function fillProfessorAuxSelects() {
-    const profSel = $("#a-prof-sel");
-    const auxSel = $("#a-aux-sel");
-    if (!profSel || !auxSel) return;
-
-    const users = (State.usuarios || []);
-    const profs = users.filter(u => (u.role || "") === "professor" || (u.role || "") === "admin");
-    const auxs = users.filter(u => (u.role || "") === "auxiliar" || (u.role || "") === "admin");
-
-    profSel.innerHTML = `<option value="">(modo manual)</option>` + profs.map(u =>
-      `<option value="${u.id}">${escapeHtml(u.nome)} • ${escapeHtml(u.role)}</option>`
-    ).join("");
-
-    auxSel.innerHTML = `<option value="">(sem auxiliar)</option>` + auxs.map(u =>
-      `<option value="${u.id}">${escapeHtml(u.nome)} • ${escapeHtml(u.role)}</option>`
-    ).join("");
-  }
-
-  async function renderAtiva() {
-    UI.setHeader("Aula ativa", "Check-in e check-out com segurança");
-    $("#page").innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Informações</div>
-            <div class="card-sub" id="ativa-info">Carregando…</div>
-          </div>
-          <div class="toolbar" style="margin:0;">
-            <button class="btn btn-outline" id="ativa-refresh">Atualizar</button>
-            <button class="btn btn-danger" id="ativa-end">Encerrar aula</button>
-          </div>
-        </div>
-
-        <div class="grid2">
-          <div class="card" style="margin:0;">
-            <div class="card-title">Check-in (Entrada)</div>
-            <div class="hint">Selecione aluno e registre entrada.</div>
-
-            <div class="field">
-              <label>Aluno</label>
-              <select id="chk-aluno">
-                <option value="">Carregando…</option>
-              </select>
-            </div>
-
-            <div style="height:12px;"></div>
-            <button class="btn btn-primary" id="btn-entrada">Registrar entrada</button>
-            <div class="hint" id="ent-msg"></div>
-          </div>
-
-          <div class="card" style="margin:0;">
-            <div class="card-title">Check-out (Saída)</div>
-            <div class="hint">Somente com responsável cadastrado do aluno.</div>
-
-            <div class="field">
-              <label>Aluno</label>
-              <select id="out-aluno">
-                <option value="">Selecione…</option>
-              </select>
-            </div>
-
-            <div class="field" style="margin-top:10px;">
-              <label>Retirado por</label>
-              <select id="out-resp">
-                <option value="">Selecione o aluno primeiro</option>
-              </select>
-              <div class="small">Se não tiver responsáveis cadastrados, a saída é bloqueada.</div>
-            </div>
-
-            <div style="height:12px;"></div>
-            <button class="btn btn-outline" id="btn-saida">Registrar saída</button>
-            <div class="hint" id="out-msg"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Lista de presença</div>
-            <div class="card-sub">Entrada/saída + retirado por</div>
-          </div>
-          <button class="btn btn-outline" id="btn-relatorio">Baixar relatório (CSV)</button>
-        </div>
-
-        <div style="overflow:auto;">
-          <table>
-            <thead>
-              <tr>
-                <th>Aluno</th>
-                <th>Entrada</th>
-                <th>Saída</th>
-                <th>Retirado por</th>
-              </tr>
-            </thead>
-            <tbody id="t-presenca"></tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    $("#ativa-refresh").onclick = () => loadAulaAtiva();
-    $("#btn-entrada").onclick = () => doEntrada();
-    $("#btn-saida").onclick = () => doSaida();
-
-    $("#ativa-end").onclick = async () => {
-      if (!State.aulaAtiva) return UI.toast("Sem aula ativa.", "err");
-      if (!confirm("Encerrar a aula ativa agora?")) return;
-      const r = await API.aulaEncerrar();
-      if (r.ok) {
-        UI.toast("Aula encerrada ✅");
-        State.aulaAtiva = null;
-        goto("historico");
-      } else {
-        UI.toast(r.error || "Erro ao encerrar", "err");
-      }
-    };
-
-    $("#btn-relatorio").onclick = async () => {
-      if (!State.aulaAtiva) return UI.toast("Sem aula ativa.", "err");
-      const id = State.aulaAtiva.id;
-      const name = `relatorio-aula-${id}.csv`;
-      await downloadFile(`/api/aulas/${id}/relatorio.csv`, name);
-    };
-
-    $("#out-aluno").onchange = async () => {
-      const alunoId = ($("#out-aluno").value || "").trim();
-      await fillResponsaveisSelect(alunoId);
-    };
-
-    await loadAulaAtiva();
-  }
-
-  async function loadAulaAtiva() {
-    $("#ativa-info").textContent = "Carregando…";
-    $("#t-presenca").innerHTML = "";
-    $("#ent-msg").textContent = "";
-    $("#out-msg").textContent = "";
-
-    const a = await API.aulaAtiva();
-    if (!a.ok) {
-      UI.setStatus("Erro", "warn");
-      $("#ativa-info").textContent = a.error || "Erro ao carregar.";
-      return;
-    }
-
-    State.aulaAtiva = a.aula || null;
-
-    if (!State.aulaAtiva) {
-      UI.setStatus("Sem aula ativa", "warn");
-      $("#ativa-info").innerHTML = `Nenhuma aula ativa agora. Vá em <b>Iniciar aula</b> para começar.`;
-      $("#chk-aluno").innerHTML = `<option value="">—</option>`;
-      $("#out-aluno").innerHTML = `<option value="">—</option>`;
-      $("#out-resp").innerHTML = `<option value="">—</option>`;
-      $("#t-presenca").innerHTML = `<tr><td colspan="4" class="muted">Sem aula ativa.</td></tr>`;
-      return;
-    }
-
-    UI.setStatus("Aula ativa", "ok");
-    $("#ativa-info").innerHTML = `
-      <b>ID:</b> ${State.aulaAtiva.id} •
-      <b>Tema:</b> ${escapeHtml(State.aulaAtiva.tema || "-")} •
-      <b>Equipe:</b> ${escapeHtml(State.aulaAtiva.professores || "-")}
-    `;
-
-    await loadAlunos();
-
-    const alunoOptions = `<option value="">Selecione…</option>` + (State.alunos || [])
-      .map(x => `<option value="${x.id}">${escapeHtml(x.nome)}</option>`)
-      .join("");
-
-    $("#chk-aluno").innerHTML = alunoOptions;
-    $("#out-aluno").innerHTML = alunoOptions;
-    $("#out-resp").innerHTML = `<option value="">Selecione o aluno primeiro</option>`;
-
-    const pres = a.presenca || [];
-    $("#t-presenca").innerHTML = pres.length
-      ? pres.map(p => `
-        <tr>
-          <td>${escapeHtml(p.aluno || "")}</td>
-          <td>${fmtTS(p.horario_entrada)}</td>
-          <td>${fmtTS(p.horario_saida)}</td>
-          <td>${escapeHtml(p.retirado_por || "-")}</td>
-        </tr>
-      `).join("")
-      : `<tr><td colspan="4" class="muted">Sem registros ainda.</td></tr>`;
-  }
-
-  async function doEntrada() {
-    const msg = $("#ent-msg");
-    msg.textContent = "";
-    if (!State.aulaAtiva) { msg.textContent = "Sem aula ativa."; return; }
-
-    const alunoId = ($("#chk-aluno").value || "").trim();
-    if (!alunoId) { msg.textContent = "Selecione um aluno."; return; }
-
-    const r = await API.aulaEntrada(State.aulaAtiva.id, alunoId);
-    if (r.ok) {
-      UI.toast("Entrada registrada ✅");
-      await loadAulaAtiva();
-    } else {
-      msg.textContent = r.error || "Erro ao registrar entrada.";
+    const [t, m] = titles[page] || ["IEQ Central", ""];
+    setHeader(t, m);
+
+    switch(page) {
+      case "home": return renderHome();
+      case "aulas": return renderIniciarAula();
+      case "ativa": return renderAulaAtiva();
+      case "alunos": return renderAlunos();
+      case "historico": return renderHistorico();
+      case "assistente": return renderAssistente();
+      case "mural": return renderMural();
+      case "equipe": return renderEquipe();
+      case "config": return renderConfig();
+      default: return renderHome();
     }
   }
 
-  async function fillResponsaveisSelect(alunoId) {
-    const sel = $("#out-resp");
-    sel.innerHTML = `<option value="">Carregando…</option>`;
-    if (!alunoId) {
-      sel.innerHTML = `<option value="">Selecione o aluno primeiro</option>`;
-      return;
-    }
-
-    const r = await API.respList(alunoId);
-    if (!r.ok) {
-      sel.innerHTML = `<option value="">Erro</option>`;
-      $("#out-msg").textContent = r.error || "Erro ao carregar responsáveis.";
-      return;
-    }
-
-    const list = r.responsaveis || [];
-    if (!list.length) {
-      sel.innerHTML = `<option value="">(sem responsáveis cadastrados)</option>`;
-      $("#out-msg").textContent = "Cadastre responsáveis deste aluno na aba Alunos.";
-      return;
-    }
-
-    $("#out-msg").textContent = "";
-    sel.innerHTML = `<option value="">Selecione…</option>` + list.map(x =>
-      `<option value="${escapeHtml(x.nome)}">${escapeHtml(x.nome)}</option>`
-    ).join("");
-  }
-
-  async function doSaida() {
-    const msg = $("#out-msg");
-    msg.textContent = "";
-    if (!State.aulaAtiva) { msg.textContent = "Sem aula ativa."; return; }
-
-    const alunoId = ($("#out-aluno").value || "").trim();
-    const resp = ($("#out-resp").value || "").trim();
-
-    if (!alunoId) { msg.textContent = "Selecione um aluno."; return; }
-    if (!resp) { msg.textContent = "Selecione o responsável (autorizado)."; return; }
-
-    const r = await API.aulaSaida(State.aulaAtiva.id, alunoId, resp);
-    if (r.ok) {
-      UI.toast("Saída registrada ✅");
-      $("#out-aluno").value = "";
-      $("#out-resp").innerHTML = `<option value="">Selecione o aluno primeiro</option>`;
-      await loadAulaAtiva();
-    } else {
-      msg.textContent = r.error || "Erro ao registrar saída.";
-    }
-  }
-
-  async function renderHistorico() {
-    UI.setHeader("Histórico", "Aulas encerradas e relatórios");
-    $("#page").innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Aulas encerradas</div>
-            <div class="card-sub">Você pode baixar o relatório de qualquer aula.</div>
-          </div>
-          <button class="btn btn-outline" id="h-refresh">Atualizar</button>
-        </div>
-        <div class="hint" id="h-msg"></div>
-        <div style="overflow:auto;">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Data</th>
-                <th>Tema</th>
-                <th>Equipe</th>
-                <th>Crianças</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody id="h-tb"></tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    $("#h-refresh").onclick = () => loadHistorico();
-    await loadHistorico();
-  }
-
-  async function loadHistorico() {
-    $("#h-msg").textContent = "Carregando…";
-    $("#h-tb").innerHTML = "";
-
-    const r = await API.historico();
-    if (!r.ok) {
-      $("#h-msg").textContent = r.error || "Erro ao carregar histórico.";
-      return;
-    }
-
-    const rows = r.historico || [];
-    $("#h-msg").textContent = rows.length ? "" : "Nenhuma aula encerrada ainda.";
-
-    $("#h-tb").innerHTML = rows.map(a => `
-      <tr>
-        <td>${a.id}</td>
-        <td>${fmtTS(a.data_aula)}</td>
-        <td>${escapeHtml(a.tema || "-")}</td>
-        <td>${escapeHtml(a.professores || "-")}</td>
-        <td>${a.total_criancas ?? 0}</td>
-        <td>
-          <button class="btn btn-outline" data-csv="${a.id}">CSV</button>
-          <button class="btn btn-outline" data-ver="${a.id}">Ver</button>
-        </td>
-      </tr>
-    `).join("") || `<tr><td colspan="6" class="muted">Nenhum registro.</td></tr>`;
-
-    $$("[data-csv]").forEach(b => {
-      b.onclick = async () => {
-        const id = b.getAttribute("data-csv");
-        await downloadFile(`/api/aulas/${id}/relatorio.csv`, `relatorio-aula-${id}.csv`);
-      };
-    });
-
-    $$("[data-ver]").forEach(b => {
-      b.onclick = async () => {
-        const id = b.getAttribute("data-ver");
-        const rr = await API.relatorio(id);
-        if (!rr.ok) return UI.toast(rr.error || "Erro", "err");
-
-        const aula = rr.aula || {};
-        const pres = rr.presenca || [];
-
-        const modal = UI.modal({
-          title: `Relatório • Aula ${id}`,
-          bodyHtml: `
-            <div class="hint">
-              <b>Tema:</b> ${escapeHtml(aula.tema || "-")}<br/>
-              <b>Equipe:</b> ${escapeHtml(aula.professores || "-")}<br/>
-              <b>Data:</b> ${escapeHtml(String(aula.data_aula || "-"))}
-            </div>
-            <div style="height:10px;"></div>
-            <div style="overflow:auto;">
-              <table>
-                <thead><tr><th>Aluno</th><th>Entrada</th><th>Saída</th><th>Retirado por</th></tr></thead>
-                <tbody>
-                  ${pres.map(p => `
-                    <tr>
-                      <td>${escapeHtml(p.aluno || "")}</td>
-                      <td>${fmtTS(p.horario_entrada)}</td>
-                      <td>${fmtTS(p.horario_saida)}</td>
-                      <td>${escapeHtml(p.retirado_por || "-")}</td>
-                    </tr>
-                  `).join("") || `<tr><td colspan="4" class="muted">Sem presença.</td></tr>`}
-                </tbody>
-              </table>
-            </div>
-          `,
-          footerHtml: `
-            <button class="btn btn-outline" data-close>Fechar</button>
-            <button class="btn btn-primary" data-csv>Baixar CSV</button>
-          `
-        });
-
-        modal.el.querySelector("[data-close]").onclick = modal.close;
-        modal.el.querySelector("[data-csv]").onclick = () => downloadFile(`/api/aulas/${id}/relatorio.csv`, `relatorio-aula-${id}.csv`);
-      };
-    });
-  }
-
-  // ✅ NOVA PÁGINA: Assistente IEQ
-  async function renderAssistente() {
-    UI.setHeader("Assistente", "Insights, sugestão de tema e relatório narrativo");
-
-    $("#page").innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Insights</div>
-            <div class="card-sub">Alertas da aula ativa + frequência baixa</div>
-          </div>
-          <button class="btn btn-outline" id="as-refresh">Atualizar</button>
-        </div>
-
-        <div class="grid2">
-          <div class="field">
-            <label>Últimas aulas (para cálculo de frequência)</label>
-            <input id="as-limite" type="number" min="1" max="60" value="10" />
-          </div>
-          <div class="field">
-            <label>Mínimo % para NÃO entrar em “baixa frequência”</label>
-            <input id="as-minpct" type="number" min="0" max="100" value="50" />
-          </div>
-        </div>
-
-        <div style="height:10px;"></div>
-        <div class="hint" id="as-msg">—</div>
-
-        <div style="height:12px;"></div>
-
-        <div class="card" style="margin:0;">
-          <div class="card-title">Alertas (aula ativa)</div>
-          <div class="hint" id="as-alertas">—</div>
-        </div>
-
-        <div style="height:12px;"></div>
-
-        <div class="card" style="margin:0;">
-          <div class="card-title">Frequência baixa</div>
-          <div style="overflow:auto;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Aluno</th>
-                  <th>Presenças</th>
-                  <th>Total</th>
-                  <th>%</th>
-                </tr>
-              </thead>
-              <tbody id="as-freq"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Sugestão de tema</div>
-            <div class="card-sub">Evita repetir temas recentes</div>
-          </div>
-          <button class="btn btn-outline" id="tema-refresh">Gerar</button>
-        </div>
-
-        <div class="field">
-          <label>Janela de “não repetir” (últimos temas)</label>
-          <input id="tema-janela" type="number" min="1" max="50" value="8" />
-        </div>
-
-        <div style="height:10px;"></div>
-        <div class="hint" id="tema-out">—</div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Relatório narrativo</div>
-            <div class="card-sub">Gera um texto pronto com base nos dados</div>
-          </div>
-          <button class="btn btn-outline" id="rel-refresh">Gerar</button>
-        </div>
-
-        <div class="grid2">
-          <div class="field">
-            <label>Usar aula ativa</label>
-            <button class="btn btn-primary" id="rel-ativa">Carregar aula ativa</button>
-            <div class="small" id="rel-ativa-info">—</div>
-          </div>
-
-          <div class="field">
-            <label>Ou escolher do histórico</label>
-            <select id="rel-hist">
-              <option value="">Carregando…</option>
-            </select>
-            <div class="small">Selecione uma aula encerrada.</div>
-          </div>
-        </div>
-
-        <div style="height:12px;"></div>
-        <textarea id="rel-texto" placeholder="O texto do relatório aparecerá aqui..." style="min-height:220px;"></textarea>
-      </div>
-    `;
-
-    $("#as-refresh").onclick = () => loadAssistInsights();
-    $("#tema-refresh").onclick = () => loadAssistTema();
-    $("#rel-refresh").onclick = () => gerarRelatorioNarrativo();
-    $("#rel-ativa").onclick = () => carregarAulaAtivaParaRelatorio();
-
-    await loadAssistInsights();
-    await loadAssistTema();
-    await loadHistoricoSelectAssist();
-  }
-
-  async function loadAssistInsights() {
-    const limite = parseInt(($("#as-limite").value || "10"), 10);
-    const minpct = parseFloat(($("#as-minpct").value || "50"));
-
-    $("#as-msg").textContent = "Carregando…";
-    $("#as-alertas").textContent = "—";
-    $("#as-freq").innerHTML = "";
-
-    const params = `?limite_aulas=${encodeURIComponent(isFinite(limite) ? limite : 10)}&min_pct=${encodeURIComponent(isFinite(minpct) ? minpct : 50)}`;
-    const r = await API.assistInsights(params);
-
-    if (!r.ok) {
-      $("#as-msg").textContent = r.error || "Erro ao carregar insights.";
-      return;
-    }
-
-    const ativa = r.aula_ativa;
-    const alertas = r.alertas || [];
-    const freq = r.frequencia_baixa || {};
-    const alunos = (freq.alunos || []);
-
-    $("#as-msg").textContent = ativa
-      ? `Aula ativa: ID ${ativa.id} • ${ativa.tema || "-"}`
-      : "Sem aula ativa agora.";
-
-    if (!alertas.length) {
-      $("#as-alertas").innerHTML = `<span class="tag ok">Sem alertas ✅</span>`;
-    } else {
-      const html = alertas.map(a => {
-        const itens = (a.itens || []).slice(0, 10).map(x => `${escapeHtml(x.aluno)} (${fmtTS(x.horario_entrada)})`).join("<br/>");
-        return `
-          <div class="hint" style="margin-top:6px;">
-            <b>${escapeHtml(a.titulo || a.tipo || "Alerta")}</b> • ${a.qtd ?? (a.itens?.length ?? 0)}<br/>
-            ${itens}${(a.itens || []).length > 10 ? "<br/>… (mais)" : ""}
-          </div>
-        `;
-      }).join("");
-      $("#as-alertas").innerHTML = html;
-    }
-
-    $("#as-freq").innerHTML = alunos.length
-      ? alunos.map(x => `
-        <tr>
-          <td>${escapeHtml(x.nome)}</td>
-          <td>${x.presentes}</td>
-          <td>${x.total_aulas}</td>
-          <td>${x.pct}%</td>
-        </tr>
-      `).join("")
-      : `<tr><td colspan="4" class="muted">Nenhum aluno abaixo do limite.</td></tr>`;
-  }
-
-  async function loadAssistTema() {
-    const janela = parseInt(($("#tema-janela").value || "8"), 10);
-    $("#tema-out").textContent = "Carregando…";
-
-    const r = await API.assistTema(`?janela=${encodeURIComponent(isFinite(janela) ? janela : 8)}`);
-    if (!r.ok) {
-      $("#tema-out").textContent = r.error || "Erro ao sugerir tema.";
-      return;
-    }
-
-    const sug = r.sugestoes || [];
-    const recentes = (r.evitando_ultimos || []).filter(Boolean);
-
-    const htmlSug = sug.map((s, i) => `
-      <div class="item" style="align-items:flex-start;">
-        <div class="item-left">
-          <div>
-            <div class="item-title">${i + 1}. ${escapeHtml(s.tema || "-")}</div>
-            <div class="item-sub"><b>Verso:</b> ${escapeHtml(s.verso || "-")}</div>
-            <div style="margin-top:6px;">${escapeHtml(s.ideia || "")}</div>
-          </div>
-        </div>
-      </div>
-    `).join("");
-
-    const htmlRec = recentes.length
-      ? `<div class="hint"><b>Temas recentes (evitar repetir):</b><br/>${recentes.map(escapeHtml).join("<br/>")}</div>`
-      : `<div class="hint">Sem histórico recente suficiente.</div>`;
-
-    $("#tema-out").innerHTML = htmlSug + `<div style="height:10px;"></div>` + htmlRec;
-  }
-
-  async function loadHistoricoSelectAssist() {
-    const sel = $("#rel-hist");
-    if (!sel) return;
-    sel.innerHTML = `<option value="">Carregando…</option>`;
-
-    const r = await API.historico();
-    if (!r.ok) {
-      sel.innerHTML = `<option value="">Erro</option>`;
-      return;
-    }
-
-    const rows = r.historico || [];
-    sel.innerHTML = `<option value="">Selecione…</option>` + rows.map(a => {
-      const label = `Aula ${a.id} • ${a.data_aula} • ${a.tema || "-"}`;
-      return `<option value="${a.id}">${escapeHtml(label)}</option>`;
-    }).join("");
-  }
-
-  async function carregarAulaAtivaParaRelatorio() {
-    $("#rel-ativa-info").textContent = "Carregando…";
-    const r = await API.aulaAtiva();
-    if (!r.ok) {
-      $("#rel-ativa-info").textContent = r.error || "Erro ao carregar aula ativa.";
-      return;
-    }
-    if (!r.aula) {
-      $("#rel-ativa-info").textContent = "Sem aula ativa.";
-      return;
-    }
-    $("#rel-ativa-info").textContent = `Aula ativa ID ${r.aula.id} • ${r.aula.tema || "-"}`;
-    // pré-seleciona aula ativa guardando num dataset
-    $("#rel-texto").dataset.aulaId = String(r.aula.id);
-    $("#rel-hist").value = "";
-    UI.toast("Aula ativa selecionada ✅");
-  }
-
-  async function gerarRelatorioNarrativo() {
-    const txt = $("#rel-texto");
-    txt.value = "Carregando…";
-
-    const fromAtiva = txt.dataset.aulaId;
-    const fromHist = ($("#rel-hist").value || "").trim();
-    const aulaId = fromHist || fromAtiva;
-
-    if (!aulaId) {
-      txt.value = "";
-      UI.toast("Selecione uma aula ativa ou do histórico.", "err");
-      return;
-    }
-
-    const r = await API.assistRelatorioNarrativo(aulaId);
-    if (!r.ok) {
-      txt.value = "";
-      UI.toast(r.error || "Erro ao gerar relatório narrativo.", "err");
-      return;
-    }
-
-    txt.value = r.texto || "(sem texto)";
-    UI.toast("Relatório gerado ✅");
-  }
-
-  async function renderMural() {
-    UI.setHeader("Mural", "Avisos do ministério");
-    const isAdmin = State.user?.role === "admin";
-
-    $("#page").innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Novo aviso</div>
-            <div class="card-sub">Mensagens rápidas para a equipe</div>
-          </div>
-          <button class="btn btn-outline" id="m-refresh">Atualizar</button>
-        </div>
-
-        <div class="field">
-          <label>Mensagem</label>
-          <textarea id="m-text" placeholder="Digite o aviso..."></textarea>
-        </div>
-
-        <div style="height:12px;"></div>
-        <button class="btn btn-primary" id="m-add">Publicar</button>
-        <div class="hint" id="m-msg"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Avisos</div>
-            <div class="card-sub">${isAdmin ? "Admin pode fixar e excluir." : ""}</div>
-          </div>
-        </div>
-
-        <div class="list" id="m-list"></div>
-      </div>
-    `;
-
-    $("#m-refresh").onclick = () => loadAvisos();
-    $("#m-add").onclick = async () => {
-      const t = ($("#m-text").value || "").trim();
-      $("#m-msg").textContent = "";
-      if (!t) { $("#m-msg").textContent = "Digite uma mensagem."; return; }
-
-      const r = await API.avisoCreate(t);
-      if (r.ok) {
-        UI.toast("Aviso publicado ✅");
-        $("#m-text").value = "";
-        loadAvisos();
-      } else {
-        $("#m-msg").textContent = r.error || "Erro ao publicar.";
-      }
-    };
-
-    loadAvisos();
-  }
-
-  async function loadAvisos() {
-    const box = $("#m-list");
-    box.innerHTML = `<div class="hint">Carregando…</div>`;
-
-    const r = await API.avisosList();
-    if (!r.ok) {
-      box.innerHTML = `<div class="hint">${escapeHtml(r.error || "Erro ao carregar avisos.")}</div>`;
-      return;
-    }
-
-    const isAdmin = State.user?.role === "admin";
-    const avisos = r.avisos || [];
-
-    box.innerHTML = avisos.map(a => `
-      <div class="item" style="align-items:flex-start;">
-        <div class="item-left">
-          <div>
-            <div class="item-title">${a.fixado ? "📌 " : ""}${escapeHtml(a.autor || "Sistema")}</div>
-            <div class="item-sub">${fmtTS(a.data_criacao)}</div>
-            <div style="margin-top:8px;">${escapeHtml(a.mensagem || "")}</div>
-          </div>
-        </div>
-        <div class="item-actions">
-          ${isAdmin ? `<button class="btn btn-outline" data-fix="${a.id}" data-v="${a.fixado ? "0" : "1"}">${a.fixado ? "Desfixar" : "Fixar"}</button>` : ""}
-          ${isAdmin ? `<button class="btn btn-danger" data-delav="${a.id}">Excluir</button>` : ""}
-        </div>
-      </div>
-    `).join("") || `<div class="hint">Nenhum aviso.</div>`;
-
-    $$("[data-fix]").forEach(b => {
-      b.onclick = async () => {
-        const id = b.getAttribute("data-fix");
-        const v = b.getAttribute("data-v") === "1";
-        const rr = await API.avisoFixar(id, v);
-        if (rr.ok) { UI.toast("Atualizado ✅"); loadAvisos(); }
-        else UI.toast(rr.error || "Erro", "err");
-      };
-    });
-
-    $$("[data-delav]").forEach(b => {
-      b.onclick = async () => {
-        const id = b.getAttribute("data-delav");
-        if (!confirm("Excluir aviso?")) return;
-        const rr = await API.avisoDelete(id);
-        if (rr.ok) { UI.toast("Excluído"); loadAvisos(); }
-        else UI.toast(rr.error || "Erro", "err");
-      };
-    });
-  }
-
-  async function renderConfig() {
-    UI.setHeader("Config", "Diagnóstico rápido e utilidades");
-    $("#page").innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Diagnóstico</div>
-            <div class="card-sub">Verifique se o servidor está servindo arquivos estáticos</div>
-          </div>
-          <button class="btn btn-outline" id="c-diag">Rodar /api/diag</button>
-        </div>
-        <div class="hint" id="c-out">—</div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Dicas</div>
-            <div class="card-sub">Se algo “não atualiza”, pode ser cache do Service Worker.</div>
-          </div>
-        </div>
-        <div class="hint">
-          Se você mexeu em arquivos estáticos (CSS/JS/ícones), incremente a versão do cache no <b>sw.js</b>.<br/>
-          E faça um hard refresh (Ctrl+F5) no PC, ou limpar cache no celular.
-        </div>
-      </div>
-    `;
-
-    $("#c-diag").onclick = async () => {
-      $("#c-out").textContent = "Carregando…";
-      try {
-        const res = await fetch("/api/diag");
-        const data = await res.json();
-        if (!data.ok) { $("#c-out").textContent = data.error || "Falhou."; return; }
-        $("#c-out").innerHTML = `
-          <b>Arquivos:</b><br/>
-          <div style="max-height:180px; overflow:auto; margin-top:8px; white-space:pre-wrap;">
-            ${escapeHtml((data.static_files || []).join("\n"))}
-          </div>
-        `;
-      } catch {
-        $("#c-out").textContent = "Falhou ao chamar /api/diag";
-      }
-    };
-  }
-
-  // ========= Boot =========
+  // =========================
+  // Boot / Auth
+  // =========================
   async function boot() {
-    UI.root = document.getElementById("app");
-    if (!UI.root) return;
+    Theme.apply();
 
-    if (!API.token) {
-      UI.renderLogin();
-      return;
-    }
+    if (!API.token) return showLogin("");
 
     const me = await API.me();
     if (!me.ok) {
       API.clearToken();
-      UI.renderLogin();
-      return;
+      return showLogin("Faça login novamente.");
     }
-
     State.user = me.user;
-    UI.renderAppShell();
+    showApp();
+
+    await preloadAll();
     goto("home");
   }
 
-  boot();
+  async function doLogin() {
+    const usuario = (UI.loginUser?.value || "").trim();
+    const senha = (UI.loginPass?.value || "").trim();
+
+    if (!usuario || !senha) {
+      if (UI.loginError) UI.loginError.textContent = "Informe usuário e senha.";
+      return;
+    }
+
+    UI.btnLogin.disabled = true;
+    const r = await API.login(usuario, senha);
+    UI.btnLogin.disabled = false;
+
+    if (!r.ok) {
+      if (UI.loginError) UI.loginError.textContent = r.error || "Falha no login.";
+      return;
+    }
+
+    API.token = r.token;
+    State.user = r.user;
+    showApp();
+    toast("Login realizado ✅", "ok");
+
+    await preloadAll();
+    goto("home");
+  }
+
+  function logout() {
+    API.clearToken();
+    State.user = null;
+    State.stats = null;
+    State.alunos = [];
+    State.usuarios = [];
+    State.aulaAtiva = null;
+    State.presenca = [];
+    State.historico = [];
+    State.avisos = [];
+    showLogin("");
+  }
+
+  async function preloadAll() {
+    await Promise.allSettled([
+      refreshStats(),
+      loadAlunos(),
+      loadUsuariosSoft(),
+      loadAulaAtiva(),
+      loadHistoricoSoft(),
+      loadAvisosSoft(),
+    ]);
+  }
+
+  // =========================
+  // Loaders
+  // =========================
+  async function refreshStats() {
+    const r = await API.stats();
+    if (r.ok) State.stats = r;
+    return r;
+  }
+
+  async function loadAlunos() {
+    const r = await API.alunosList();
+    if (r.ok) State.alunos = r.alunos || [];
+    return r;
+  }
+
+  async function loadUsuariosSoft() {
+    const r = await API.usuariosList();
+    if (r.ok) State.usuarios = r.usuarios || [];
+    else State.usuarios = [];
+    return r;
+  }
+
+  async function loadAulaAtiva() {
+    const r = await API.aulaAtiva();
+    if (r.ok) {
+      State.aulaAtiva = r.aula || null;
+      State.presenca = r.presenca || [];
+    }
+    return r;
+  }
+
+  async function loadHistoricoSoft() {
+    const r = await API.historico();
+    if (r.ok) State.historico = r.historico || [];
+    else State.historico = [];
+    return r;
+  }
+
+  async function loadAvisosSoft() {
+    const r = await API.avisosList();
+    if (r.ok) State.avisos = r.avisos || [];
+    else State.avisos = [];
+    return r;
+  }
+
+  // =========================
+  // Components
+  // =========================
+  function card(title, bodyHtml, actionsHtml="") {
+    return `
+      <div class="card">
+        <div class="card-h">
+          <div>
+            <div class="card-title">${escapeHtml(title)}</div>
+          </div>
+          <div class="card-actions">${actionsHtml || ""}</div>
+        </div>
+        <div class="card-b">${bodyHtml || ""}</div>
+      </div>
+    `;
+  }
+
+  function button(label, cls="", attrs="") {
+    return `<button class="btn ${cls}" ${attrs}>${escapeHtml(label)}</button>`;
+  }
+
+  function input(label, id, value="", placeholder="", type="text") {
+    return `
+      <label class="field">
+        <span>${escapeHtml(label)}</span>
+        <input id="${id}" type="${type}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}"/>
+      </label>
+    `;
+  }
+
+  function textarea(label, id, value="", placeholder="") {
+    return `
+      <label class="field">
+        <span>${escapeHtml(label)}</span>
+        <textarea id="${id}" rows="3" placeholder="${escapeHtml(placeholder)}">${escapeHtml(value)}</textarea>
+      </label>
+    `;
+  }
+
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result || ""));
+      fr.onerror = () => reject(new Error("Falha ao ler arquivo"));
+      fr.readAsDataURL(file);
+    });
+  }
+
+  // searchable dropdown (input + list)
+  function renderSearchSelect({ id, items, label, placeholder="Digite para buscar...", getLabel, onPick }) {
+    // returns HTML; wiring happens after render
+    return `
+      <div class="search-select" data-ss="${id}">
+        <label class="field">
+          <span>${escapeHtml(label)}</span>
+          <input class="ss-input" type="text" placeholder="${escapeHtml(placeholder)}" autocomplete="off"/>
+        </label>
+        <div class="ss-list"></div>
+      </div>
+    `;
+  }
+
+  function wireSearchSelect(rootEl, { items, getLabel, onPick }) {
+    const inputEl = rootEl.querySelector(".ss-input");
+    const listEl = rootEl.querySelector(".ss-list");
+
+    const renderList = (q="") => {
+      const qq = q.trim().toLowerCase();
+      const filtered = !qq ? items.slice(0, 20) : items.filter(it => getLabel(it).toLowerCase().includes(qq)).slice(0, 20);
+
+      listEl.innerHTML = filtered.length
+        ? filtered.map(it => `<button class="ss-item" data-id="${it.id}">${escapeHtml(getLabel(it))}</button>`).join("")
+        : `<div class="ss-empty">Nada encontrado.</div>`;
+    };
+
+    inputEl.addEventListener("input", () => renderList(inputEl.value));
+    listEl.addEventListener("click", (e) => {
+      const btn = e.target.closest(".ss-item");
+      if (!btn) return;
+      const id = Number(btn.dataset.id);
+      const it = items.find(x => x.id === id);
+      if (!it) return;
+      inputEl.value = getLabel(it);
+      listEl.innerHTML = "";
+      onPick(it);
+    });
+
+    // initial
+    renderList("");
+  }
+
+  // =========================
+  // Pages
+  // =========================
+
+  async function renderHome() {
+    await Promise.allSettled([refreshStats(), loadAvisosSoft(), loadAulaAtiva()]);
+
+    const s = State.stats || {};
+    const fixados = (State.avisos || []).filter(a => a.fixado);
+
+    const statusHtml = `
+      <div class="grid-4">
+        <div class="stat">
+          <div class="stat-ico">🧒</div>
+          <div class="stat-k">${escapeHtml(String(s.total_alunos ?? "—"))}</div>
+          <div class="stat-l">Alunos</div>
+        </div>
+        <div class="stat">
+          <div class="stat-ico">👥</div>
+          <div class="stat-k">${escapeHtml(String(s.total_equipe ?? "—"))}</div>
+          <div class="stat-l">Equipe</div>
+        </div>
+        <div class="stat">
+          <div class="stat-ico">🎓</div>
+          <div class="stat-k">${escapeHtml((s.aula_ativa ? "Sim" : "Não"))}</div>
+          <div class="stat-l">Aula ativa</div>
+        </div>
+        <div class="stat">
+          <div class="stat-ico">✅</div>
+          <div class="stat-k">${escapeHtml(String(s.presentes ?? "—"))}</div>
+          <div class="stat-l">Presentes</div>
+        </div>
+      </div>
+    `;
+
+    const atalhosHtml = `
+      <div class="grid-3">
+        <div class="shortcut" data-go="aulas">
+          <div class="sc-ico">🎓</div>
+          <div>
+            <div class="sc-t">Iniciar aula</div>
+            <div class="sc-s">Selecione prof/aux e tema</div>
+          </div>
+        </div>
+        <div class="shortcut" data-go="ativa">
+          <div class="sc-ico">✅</div>
+          <div>
+            <div class="sc-t">Aula ativa</div>
+            <div class="sc-s">Check-in e check-out</div>
+          </div>
+        </div>
+        <div class="shortcut" data-go="assistente">
+          <div class="sc-ico">🧠</div>
+          <div>
+            <div class="sc-t">Assistente</div>
+            <div class="sc-s">Insights e relatório</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const fixadosHtml = fixados.length ? `
+      <div class="list">
+        ${fixados.map(a => `
+          <div class="notice">
+            <div class="notice-h">
+              <div class="badge">Fixado</div>
+              <div class="notice-meta">${escapeHtml(a.autor || "Sistema")} • ${escapeHtml(fmtDT(a.data_criacao))}</div>
+            </div>
+            ${a.mensagem ? `<div class="notice-msg">${escapeHtml(a.mensagem)}</div>` : ""}
+            ${a.imagem ? `<img class="notice-img" src="${a.imagem}" alt="imagem do aviso"/>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    ` : `<div class="muted">Nenhum aviso fixado.</div>`;
+
+    UI.pageHost.innerHTML = `
+      ${card("Status", statusHtml, `<button class="btn" id="btn-home-refresh">Atualizar</button>`)}
+      ${card("Atalhos", atalhosHtml)}
+      ${card("Avisos fixados", fixadosHtml, `<button class="btn" id="btn-go-mural">Abrir mural</button>`)}
+    `;
+
+    $("#btn-home-refresh").onclick = async () => {
+      await preloadAll();
+      renderHome();
+      toast("Atualizado.", "ok");
+    };
+    $("#btn-go-mural").onclick = () => goto("mural");
+
+    $$(".shortcut").forEach(el => {
+      el.addEventListener("click", () => goto(el.dataset.go));
+    });
+  }
+
+  async function renderIniciarAula() {
+    await loadUsuariosSoft();
+
+    const profs = State.usuarios.filter(u => (u.role || "").toLowerCase() === "professor");
+    const auxs  = State.usuarios.filter(u => (u.role || "").toLowerCase() !== "admin"); // auxiliares e professores
+
+    UI.pageHost.innerHTML = `
+      ${card("Iniciar aula", `
+        <div class="grid-2">
+          <label class="field">
+            <span>Professor</span>
+            <select id="sel-prof">
+              <option value="">Selecione...</option>
+              ${profs.map(u => `<option value="${u.id}">${escapeHtml(u.nome)} (@${escapeHtml(u.usuario)})</option>`).join("")}
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Auxiliar</span>
+            <select id="sel-aux">
+              <option value="">(opcional)</option>
+              ${auxs.map(u => `<option value="${u.id}">${escapeHtml(u.nome)} (@${escapeHtml(u.usuario)})</option>`).join("")}
+            </select>
+          </label>
+        </div>
+
+        ${input("Tema", "tema", "", "Ex: Deus é amor")}
+
+        <div class="row">
+          <button class="btn primary" id="btn-iniciar">Iniciar aula</button>
+          <span class="muted" id="iniciar-msg"></span>
+        </div>
+      `)}
+    `;
+
+    $("#btn-iniciar").onclick = async () => {
+      const professor_id = Number($("#sel-prof").value || 0) || null;
+      const auxiliar_id = Number($("#sel-aux").value || 0) || null;
+      const tema = ($("#tema").value || "").trim();
+      const msg = $("#iniciar-msg");
+
+      msg.textContent = "";
+      if (!professor_id) return msg.textContent = "Selecione um professor.";
+      if (!tema) return msg.textContent = "Informe o tema.";
+
+      const r = await API.aulaIniciar({ professor_id, auxiliar_id, tema });
+      if (!r.ok) {
+        msg.textContent = r.error || "Erro ao iniciar aula.";
+        toast(msg.textContent, "err");
+        return;
+      }
+      toast("Aula iniciada ✅", "ok");
+      await loadAulaAtiva();
+      goto("ativa");
+    };
+  }
+
+  async function renderAulaAtiva() {
+    const host = UI.pageHost;
+    host.innerHTML = card("Carregando...", `<div class="muted">Buscando aula ativa…</div>`, `<button class="btn" id="btn-ativa-refresh">Atualizar</button>`);
+
+    $("#btn-ativa-refresh").onclick = async () => {
+      await loadAulaAtiva();
+      renderAulaAtiva();
+    };
+
+    const r = await loadAulaAtiva();
+    if (!r.ok) {
+      host.innerHTML = card("Informações", `<div class="err">Erro ao carregar aula ativa: ${escapeHtml(r.error || "—")}</div>`,
+        `<button class="btn" id="btn-ativa-refresh2">Atualizar</button>`);
+      $("#btn-ativa-refresh2").onclick = async () => {
+        await loadAulaAtiva();
+        renderAulaAtiva();
+      };
+      return;
+    }
+
+    const aula = State.aulaAtiva;
+    await loadAlunos();
+
+    if (!aula) {
+      host.innerHTML = card("Aula ativa", `<div class="muted">Nenhuma aula ativa. Inicie uma aula para registrar presença.</div>`,
+        `<button class="btn primary" id="btn-go-iniciar">Iniciar aula</button>`);
+      $("#btn-go-iniciar").onclick = () => goto("aulas");
+      return;
+    }
+
+    let pickedEntrada = null;
+    let pickedSaida = null;
+
+    const alunos = State.alunos.slice().sort((a,b)=> (a.nome||"").localeCompare(b.nome||"", "pt-BR"));
+
+    const entradaBox = `
+      <div class="box">
+        <h3>Check-in (Entrada)</h3>
+        <div class="muted">Digite o nome e selecione.</div>
+        ${renderSearchSelect({
+          id: "entrada",
+          items: alunos,
+          label: "Aluno",
+          getLabel: (a) => `${a.nome} (ID: ${a.id})`,
+          onPick: () => {}
+        })}
+        <div class="row">
+          <button class="btn primary" id="btn-entrada">Registrar entrada</button>
+          <span class="muted" id="entrada-msg"></span>
+        </div>
+      </div>
+    `;
+
+    const saidaBox = `
+      <div class="box">
+        <h3>Check-out (Saída)</h3>
+        <div class="muted">Somente com responsável cadastrado do aluno.</div>
+
+        ${renderSearchSelect({
+          id: "saida",
+          items: alunos,
+          label: "Aluno",
+          getLabel: (a) => `${a.nome} (ID: ${a.id})`,
+          onPick: () => {}
+        })}
+
+        <label class="field">
+          <span>Retirado por</span>
+          <select id="sel-retirado">
+            <option value="">Selecione o aluno primeiro</option>
+          </select>
+          <small class="muted">Se não tiver responsáveis cadastrados, a saída é bloqueada.</small>
+        </label>
+
+        <div class="row">
+          <button class="btn" id="btn-saida">Registrar saída</button>
+          <span class="muted" id="saida-msg"></span>
+        </div>
+      </div>
+    `;
+
+    const presHtml = `
+      <div class="box">
+        <div class="row between">
+          <div>
+            <h3>Lista de presença</h3>
+            <div class="muted">Entrada/saída + retirado por</div>
+          </div>
+          <a class="btn" href="/api/aulas/${aula.id}/relatorio.csv" target="_blank" rel="noopener">Baixar relatório (CSV)</a>
+        </div>
+
+        <div class="table">
+          <div class="tr th">
+            <div>Aluno</div><div>Entrada</div><div>Saída</div><div>Retirado por</div>
+          </div>
+          ${(State.presenca||[]).map(p => `
+            <div class="tr">
+              <div>${escapeHtml(p.aluno)}</div>
+              <div>${escapeHtml(fmtDT(p.horario_entrada))}</div>
+              <div>${escapeHtml(fmtDT(p.horario_saida))}</div>
+              <div>${escapeHtml(p.retirado_por || "")}</div>
+            </div>
+          `).join("") || `<div class="muted pad">Nenhum registro ainda.</div>`}
+        </div>
+      </div>
+    `;
+
+    host.innerHTML = `
+      ${card("Informações", `
+        <div class="row between">
+          <div>
+            <div><b>Tema:</b> ${escapeHtml(aula.tema || "")}</div>
+            <div><b>Equipe:</b> ${escapeHtml(aula.professores || "")}</div>
+            <div><b>Iniciada em:</b> ${escapeHtml(fmtDT(aula.iniciada_em || aula.data_aula))}</div>
+          </div>
+          <div class="row">
+            <button class="btn" id="btn-ativa-refresh3">Atualizar</button>
+            <button class="btn danger" id="btn-encerrar">Encerrar aula</button>
+          </div>
+        </div>
+      `)}
+      <div class="grid-2">
+        ${entradaBox}
+        ${saidaBox}
+      </div>
+      ${presHtml}
+    `;
+
+    $("#btn-ativa-refresh3").onclick = async () => {
+      await loadAulaAtiva();
+      renderAulaAtiva();
+      toast("Atualizado.", "ok");
+    };
+
+    $("#btn-encerrar").onclick = async () => {
+      if (!confirm("Encerrar a aula ativa?")) return;
+      const rr = await API.aulaEncerrar();
+      if (!rr.ok) return toast(rr.error || "Erro ao encerrar aula.", "err");
+      toast("Aula encerrada ✅", "ok");
+      await loadAulaAtiva();
+      await loadHistoricoSoft();
+      renderAulaAtiva();
+    };
+
+    // wire search selects
+    const ssEntrada = host.querySelector('[data-ss="entrada"]');
+    wireSearchSelect(ssEntrada, {
+      items: alunos,
+      getLabel: (a) => a.nome,
+      onPick: (a) => { pickedEntrada = a; }
+    });
+
+    const ssSaida = host.querySelector('[data-ss="saida"]');
+    wireSearchSelect(ssSaida, {
+      items: alunos,
+      getLabel: (a) => a.nome,
+      onPick: (a) => {
+        pickedSaida = a;
+        // preencher responsáveis
+        const opts = [];
+        const a1 = (a.autorizado_retirar || "").trim();
+        const a2 = (a.autorizado_2 || "").trim();
+        const a3 = (a.autorizado_3 || "").trim();
+        if (a1) opts.push(a1);
+        if (a2) opts.push(a2);
+        if (a3) opts.push(a3);
+
+        const sel = $("#sel-retirado");
+        sel.innerHTML = opts.length
+          ? `<option value="">Selecione...</option>` + opts.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("")
+          : `<option value="">Sem responsáveis cadastrados</option>`;
+      }
+    });
+
+    $("#btn-entrada").onclick = async () => {
+      const msg = $("#entrada-msg");
+      msg.textContent = "";
+      if (!pickedEntrada) return msg.textContent = "Selecione um aluno.";
+      const rr = await API.aulaEntrada({ aula_id: aula.id, aluno_id: pickedEntrada.id });
+      if (!rr.ok) return toast(rr.error || "Erro no check-in.", "err");
+      toast(`Entrada registrada: ${pickedEntrada.nome} ✅`, "ok");
+      await loadAulaAtiva();
+      renderAulaAtiva();
+    };
+
+    $("#btn-saida").onclick = async () => {
+      const msg = $("#saida-msg");
+      msg.textContent = "";
+      if (!pickedSaida) return msg.textContent = "Selecione um aluno.";
+      const retirado_por = ($("#sel-retirado").value || "").trim();
+      if (!retirado_por) return msg.textContent = "Selecione o responsável.";
+      const rr = await API.aulaSaida({ aula_id: aula.id, aluno_id: pickedSaida.id, retirado_por });
+      if (!rr.ok) return toast(rr.error || "Erro no check-out.", "err");
+      toast(`Saída registrada: ${pickedSaida.nome} ✅`, "ok");
+      await loadAulaAtiva();
+      renderAulaAtiva();
+    };
+  }
+
+  async function renderAlunos() {
+    await loadAlunos();
+
+    const list = State.alunos.slice().sort((a,b)=> (a.nome||"").localeCompare(b.nome||"", "pt-BR"));
+
+    const edit = (id) => {
+      State.alunoEditId = id;
+      renderAlunos();
+    };
+
+    const clearEdit = () => {
+      State.alunoEditId = null;
+      renderAlunos();
+    };
+
+    const alunoEdit = State.alunoEditId ? list.find(a => a.id === State.alunoEditId) : null;
+
+    const formHtml = `
+      <div class="grid-2">
+        ${input("Nome do aluno", "al-nome", alunoEdit?.nome || "", "Nome completo")}
+        ${input("Data de nascimento", "al-nasc", alunoEdit?.data_nascimento || "", "Ex: 12/03/2018")}
+      </div>
+
+      <div class="grid-2">
+        ${input("Responsável principal (nome)", "al-resp", alunoEdit?.responsavel || "", "Ex: Maria Silva")}
+        ${input("Telefone do responsável", "al-tel", alunoEdit?.telefone || "", "(xx) xxxxx-xxxx")}
+      </div>
+
+      <div class="grid-2">
+        ${input("Autorizado a retirar (1)", "al-aut1", alunoEdit?.autorizado_retirar || "", "Nome do autorizado")}
+        ${input("Autorizado a retirar (2)", "al-aut2", alunoEdit?.autorizado_2 || "", "Nome do autorizado")}
+      </div>
+
+      <div class="grid-2">
+        ${input("Autorizado a retirar (3)", "al-aut3", alunoEdit?.autorizado_3 || "", "Nome do autorizado")}
+        ${textarea("Observações", "al-obs", alunoEdit?.observacoes || "", "Alergias, restrições, recados…")}
+      </div>
+
+      <label class="field">
+        <span>Foto (opcional)</span>
+        <input id="al-foto" type="file" accept="image/*"/>
+        <small class="muted">Você pode enviar uma foto da criança para aparecer no cadastro.</small>
+      </label>
+
+      ${alunoEdit?.foto ? `<img class="preview" src="${alunoEdit.foto}" alt="foto do aluno"/>` : ""}
+
+      <div class="row">
+        <button class="btn primary" id="btn-al-save">${State.alunoEditId ? "Salvar alterações" : "Cadastrar"}</button>
+        ${State.alunoEditId ? `<button class="btn" id="btn-al-cancel">Cancelar edição</button>` : ""}
+        <span class="muted" id="al-msg"></span>
+      </div>
+    `;
+
+    const listHtml = `
+      <div class="row between">
+        <div class="muted">Clique em “Editar” para alterar o cadastro.</div>
+        <input id="al-busca" class="mini" placeholder="Pesquisar aluno…"/>
+      </div>
+      <div class="list" id="al-list">
+        ${list.map(a => `
+          <div class="item">
+            <div class="item-main">
+              <div class="item-title">${escapeHtml(a.nome)}</div>
+              <div class="item-sub">
+                ID: ${a.id}
+                ${a.telefone ? " • Tel: " + escapeHtml(a.telefone) : ""}
+                ${a.responsavel ? " • Resp: " + escapeHtml(a.responsavel) : ""}
+              </div>
+            </div>
+            <div class="row">
+              <button class="btn" data-edit="${a.id}">Editar</button>
+              <button class="btn danger" data-del="${a.id}">Excluir</button>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+
+    UI.pageHost.innerHTML = `
+      ${card(State.alunoEditId ? "Editar aluno" : "Cadastrar aluno", formHtml,
+        State.alunoEditId ? "" : `<button class="btn" id="btn-al-refresh">Atualizar</button>`)}
+      ${card("Lista", listHtml)}
+    `;
+
+    $("#btn-al-refresh")?.addEventListener("click", async () => {
+      await loadAlunos();
+      renderAlunos();
+      toast("Atualizado.", "ok");
+    });
+
+    $("#btn-al-cancel")?.addEventListener("click", clearEdit);
+
+    // salvar
+    $("#btn-al-save").onclick = async () => {
+      const msg = $("#al-msg");
+      msg.textContent = "";
+
+      const nome = ($("#al-nome").value || "").trim();
+      if (!nome) return msg.textContent = "Nome é obrigatório.";
+
+      const payload = {
+        nome,
+        data_nascimento: ($("#al-nasc").value || "").trim(),
+        responsavel: ($("#al-resp").value || "").trim(),
+        telefone: ($("#al-tel").value || "").trim(),
+        observacoes: ($("#al-obs").value || "").trim(),
+        autorizado_retirar: ($("#al-aut1").value || "").trim(),
+        autorizado_2: ($("#al-aut2").value || "").trim(),
+        autorizado_3: ($("#al-aut3").value || "").trim(),
+      };
+
+      // foto
+      const f = $("#al-foto")?.files?.[0];
+      if (f) {
+        if (f.size > 2_500_000) return toast("Foto muito grande (máx ~2.5MB).", "err");
+        payload.foto = await fileToDataUrl(f);
+      }
+
+      let r;
+      if (State.alunoEditId) r = await API.alunoUpdate(State.alunoEditId, payload);
+      else r = await API.alunoCreate(payload);
+
+      if (!r.ok) return toast(r.error || "Erro ao salvar aluno.", "err");
+
+      toast("Cadastro salvo ✅", "ok");
+      State.alunoEditId = null;
+      await loadAlunos();
+      renderAlunos();
+    };
+
+    // list actions
+    $("#al-list").addEventListener("click", async (e) => {
+      const ed = e.target.closest("[data-edit]");
+      const del = e.target.closest("[data-del]");
+
+      if (ed) return edit(Number(ed.dataset.edit));
+
+      if (del) {
+        const id = Number(del.dataset.del);
+        const a = list.find(x => x.id === id);
+        if (!confirm(`Excluir o aluno "${a?.nome || id}"?`)) return;
+        const r = await API.alunoDelete(id);
+        if (!r.ok) return toast(r.error || "Erro ao excluir.", "err");
+        toast("Aluno excluído.", "ok");
+        await loadAlunos();
+        renderAlunos();
+      }
+    });
+
+    // busca
+    $("#al-busca").addEventListener("input", () => {
+      const q = ($("#al-busca").value || "").trim().toLowerCase();
+      const host = $("#al-list");
+      const items = host.querySelectorAll(".item");
+      items.forEach(it => {
+        const t = it.querySelector(".item-title")?.textContent?.toLowerCase() || "";
+        it.style.display = t.includes(q) ? "" : "none";
+      });
+    });
+  }
+
+  async function renderHistorico() {
+    await loadHistoricoSoft();
+
+    const h = State.historico || [];
+
+    UI.pageHost.innerHTML = `
+      ${card("Aulas encerradas", `
+        <div class="table">
+          <div class="tr th">
+            <div>ID</div><div>Data</div><div>Tema</div><div>Equipe</div><div>Relatório</div>
+          </div>
+          ${h.map(a => `
+            <div class="tr">
+              <div>${a.id}</div>
+              <div>${escapeHtml(fmtDT(a.encerrada_em || a.data_aula))}</div>
+              <div>${escapeHtml(a.tema || "")}</div>
+              <div>${escapeHtml(a.professores || "")}</div>
+              <div><a class="link" href="/api/aulas/${a.id}/relatorio.csv" target="_blank" rel="noopener">Baixar CSV</a></div>
+            </div>
+          `).join("") || `<div class="muted pad">Nenhuma aula encerrada ainda.</div>`}
+        </div>
+      `, `<button class="btn" id="btn-hist-refresh">Atualizar</button>`)}
+    `;
+
+    $("#btn-hist-refresh").onclick = async () => {
+      await loadHistoricoSoft();
+      renderHistorico();
+      toast("Atualizado.", "ok");
+    };
+  }
+
+  async function renderAssistente() {
+    await Promise.allSettled([loadHistoricoSoft(), loadAulaAtiva()]);
+
+    UI.pageHost.innerHTML = `
+      ${card("Insights", `
+        <div class="grid-2">
+          ${input("Últimas aulas (para cálculo de frequência)", "ai-limite", "10", "10", "number")}
+          ${input("Mínimo % para NÃO entrar em baixa frequência", "ai-min", "50", "50", "number")}
+        </div>
+        <div class="row between">
+          <div class="muted">Alertas da aula ativa + frequência baixa</div>
+          <button class="btn" id="btn-ai-run">Atualizar</button>
+        </div>
+        <div id="ai-out" class="pad-top"></div>
+      `)}
+
+      ${card("Sugestão de tema", `
+        ${input("Janela de “não repetir” (últimos temas)", "at-janela", "8", "8", "number")}
+        <div class="row between">
+          <div class="muted">Evita repetir temas recentes</div>
+          <button class="btn" id="btn-at-run">Gerar</button>
+        </div>
+        <div id="at-out" class="pad-top"></div>
+      `)}
+
+      ${card("Relatório narrativo", `
+        <div class="grid-2">
+          <div>
+            <div class="muted">Usar aula ativa</div>
+            <button class="btn primary" id="btn-an-ativa">Carregar aula ativa</button>
+            <div id="an-ativa-meta" class="muted pad-top"></div>
+          </div>
+          <div>
+            <div class="muted">Ou escolher do histórico</div>
+            <select id="an-hist">
+              <option value="">Selecione uma aula encerrada…</option>
+              ${(State.historico||[]).slice(0, 50).map(a => `
+                <option value="${a.id}">Aula ${a.id} • ${fmtDT(a.encerrada_em || a.data_aula)} • ${escapeHtml(a.tema||"")}</option>
+              `).join("")}
+            </select>
+          </div>
+        </div>
+
+        <div class="row between">
+          <div class="muted">Gera um texto pronto com base nos dados</div>
+          <button class="btn" id="btn-an-run">Gerar</button>
+        </div>
+
+        <textarea id="an-text" rows="10" placeholder="O texto do relatório aparecerá aqui…"></textarea>
+      `)}
+    `;
+
+    // Insights
+    $("#btn-ai-run").onclick = async () => {
+      const limite = Number($("#ai-limite").value || 10);
+      const min = Number($("#ai-min").value || 50);
+      const out = $("#ai-out");
+      out.innerHTML = `<div class="muted">Gerando…</div>`;
+
+      const r = await API.assistInsights(limite, min);
+      if (!r.ok) {
+        out.innerHTML = `<div class="err">Erro ao gerar insights: ${escapeHtml(r.error || "—")}</div>`;
+        return;
+      }
+
+      const alertas = r.alertas || [];
+      const fb = r.frequencia_baixa || { alunos: [] };
+
+      out.innerHTML = `
+        <div class="box">
+          <h3>Alertas (aula ativa)</h3>
+          ${alertas.length ? alertas.map(a => `
+            <div class="pill">
+              <b>${escapeHtml(a.titulo)}</b> • ${a.qtd} item(ns)
+            </div>
+          `).join("") : `<div class="muted">Nenhum alerta.</div>`}
+        </div>
+
+        <div class="box">
+          <h3>Frequência baixa</h3>
+          <div class="muted">Total de aulas analisadas: ${fb.total_aulas || 0} • Limite: ${fb.min_pct || min}%</div>
+          ${fb.alunos?.length ? `
+            <div class="table">
+              <div class="tr th"><div>Aluno</div><div>Presenças</div><div>Total</div><div>%</div></div>
+              ${fb.alunos.map(a => `
+                <div class="tr">
+                  <div>${escapeHtml(a.nome)}</div>
+                  <div>${a.presentes}</div>
+                  <div>${a.total_aulas}</div>
+                  <div>${a.pct}%</div>
+                </div>
+              `).join("")}
+            </div>
+          ` : `<div class="muted">Nenhum aluno abaixo do limite.</div>`}
+        </div>
+      `;
+    };
+
+    // Tema
+    $("#btn-at-run").onclick = async () => {
+      const janela = Number($("#at-janela").value || 8);
+      const out = $("#at-out");
+      out.innerHTML = `<div class="muted">Gerando…</div>`;
+      const r = await API.assistTema(janela);
+      if (!r.ok) {
+        out.innerHTML = `<div class="err">Erro ao sugerir tema: ${escapeHtml(r.error || "—")}</div>`;
+        return;
+      }
+
+      out.innerHTML = `
+        <div class="grid-3">
+          ${(r.sugestoes||[]).map(s => `
+            <div class="box">
+              <div class="pill"><b>${escapeHtml(s.tema)}</b></div>
+              <div class="muted">${escapeHtml(s.verso)}</div>
+              <div class="pad-top">${escapeHtml(s.ideia)}</div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    };
+
+    // Narrativo
+    let selectedAulaId = null;
+
+    $("#btn-an-ativa").onclick = async () => {
+      await loadAulaAtiva();
+      if (!State.aulaAtiva) {
+        $("#an-ativa-meta").textContent = "Nenhuma aula ativa agora.";
+        selectedAulaId = null;
+        return;
+      }
+      selectedAulaId = State.aulaAtiva.id;
+      $("#an-ativa-meta").textContent = `Aula ativa: ${State.aulaAtiva.id} • ${State.aulaAtiva.tema || ""}`;
+      toast("Aula ativa selecionada.", "ok");
+    };
+
+    $("#an-hist").onchange = () => {
+      const v = $("#an-hist").value;
+      selectedAulaId = v ? Number(v) : null;
+    };
+
+    $("#btn-an-run").onclick = async () => {
+      if (!selectedAulaId) return toast("Selecione uma aula ativa ou do histórico.", "err");
+      $("#an-text").value = "Gerando…";
+      const r = await API.assistNarrativo(selectedAulaId);
+      if (!r.ok) {
+        $("#an-text").value = `Erro: ${r.error || "—"}`;
+        return;
+      }
+      $("#an-text").value = r.texto || "";
+      toast("Relatório gerado ✅", "ok");
+    };
+  }
+
+  async function renderMural() {
+    await loadAvisosSoft();
+    const avisos = State.avisos || [];
+    const isAdmin = (State.user?.role || "").toLowerCase() === "admin";
+
+    UI.pageHost.innerHTML = `
+      ${card("Novo aviso", `
+        <label class="field">
+          <span>Mensagem</span>
+          <textarea id="av-msg" rows="4" placeholder="Digite o aviso…"></textarea>
+        </label>
+        <label class="field">
+          <span>Anexar imagem (opcional)</span>
+          <input id="av-img" type="file" accept="image/*"/>
+        </label>
+
+        <div class="row between">
+          <button class="btn primary" id="btn-av-pub">Publicar</button>
+          <button class="btn" id="btn-av-refresh">Atualizar</button>
+        </div>
+      `)}
+
+      ${card("Avisos", `
+        <div class="list" id="av-list">
+          ${avisos.map(a => `
+            <div class="notice">
+              <div class="notice-h">
+                <div class="row">
+                  ${a.fixado ? `<span class="badge">Fixado</span>` : ``}
+                  <div class="notice-meta">${escapeHtml(a.autor || "Sistema")} • ${escapeHtml(fmtDT(a.data_criacao))}</div>
+                </div>
+
+                <div class="row">
+                  ${isAdmin ? `<button class="btn mini" data-fixar="${a.id}" data-fix="${a.fixado ? "0" : "1"}">${a.fixado ? "Desfixar" : "Fixar"}</button>` : ``}
+                  ${isAdmin ? `<button class="btn mini danger" data-del="${a.id}">Excluir</button>` : ``}
+                </div>
+              </div>
+
+              ${a.mensagem ? `<div class="notice-msg">${escapeHtml(a.mensagem)}</div>` : ""}
+              ${a.imagem ? `<img class="notice-img" src="${a.imagem}" alt="imagem do aviso"/>` : ""}
+
+              <div class="row between pad-top">
+                <button class="btn mini" data-like="${a.id}">❤️ ${a.likes || 0}</button>
+                <span class="muted">${a.liked_by_me ? "Você curtiu" : ""}</span>
+              </div>
+
+              <div class="comments">
+                ${(a.comentarios||[]).map(c => `
+                  <div class="comment">
+                    <b>@${escapeHtml(c.usuario)}</b> ${escapeHtml(c.comentario)}
+                    <span class="muted">• ${escapeHtml(fmtDT(c.criado_em))}</span>
+                  </div>
+                `).join("")}
+              </div>
+
+              <div class="row">
+                <input class="mini" placeholder="Comentar…" data-com-in="${a.id}"/>
+                <button class="btn mini" data-com-btn="${a.id}">Enviar</button>
+              </div>
+            </div>
+          `).join("") || `<div class="muted">Nenhum aviso ainda.</div>`}
+        </div>
+      `)}
+    `;
+
+    $("#btn-av-refresh").onclick = async () => {
+      await loadAvisosSoft();
+      renderMural();
+      toast("Atualizado.", "ok");
+    };
+
+    $("#btn-av-pub").onclick = async () => {
+      const mensagem = ($("#av-msg").value || "").trim();
+      const f = $("#av-img")?.files?.[0];
+      let imagem = null;
+      if (f) {
+        if (f.size > 2_500_000) return toast("Imagem muito grande (máx ~2.5MB).", "err");
+        imagem = await fileToDataUrl(f);
+      }
+      const r = await API.avisoCreate({ mensagem, imagem });
+      if (!r.ok) return toast(r.error || "Erro ao publicar aviso.", "err");
+      $("#av-msg").value = "";
+      $("#av-img").value = "";
+      toast("Aviso publicado ✅", "ok");
+      await loadAvisosSoft();
+      renderMural();
+    };
+
+    $("#av-list").addEventListener("click", async (e) => {
+      const del = e.target.closest("[data-del]");
+      const fix = e.target.closest("[data-fixar]");
+      const like = e.target.closest("[data-like]");
+      const comBtn = e.target.closest("[data-com-btn]");
+
+      if (del) {
+        const id = Number(del.dataset.del);
+        if (!confirm("Excluir este aviso?")) return;
+        const r = await API.avisoDelete(id);
+        if (!r.ok) return toast(r.error || "Erro ao excluir.", "err");
+        toast("Aviso excluído.", "ok");
+        await loadAvisosSoft();
+        renderMural();
+      }
+
+      if (fix) {
+        const id = Number(fix.dataset.fixar);
+        const desired = fix.dataset.fix === "1";
+        const r = await API.avisoFixar(id, desired);
+        if (!r.ok) return toast(r.error || "Erro ao fixar.", "err");
+        toast(desired ? "Fixado." : "Desfixado.", "ok");
+        await loadAvisosSoft();
+        renderMural();
+      }
+
+      if (like) {
+        const id = Number(like.dataset.like);
+        const r = await API.avisoLike(id);
+        if (!r.ok) return toast(r.error || "Erro no like.", "err");
+        await loadAvisosSoft();
+        renderMural();
+      }
+
+      if (comBtn) {
+        const id = Number(comBtn.dataset.comBtn);
+        const input = $(`[data-com-in="${id}"]`);
+        const comentario = (input?.value || "").trim();
+        if (!comentario) return;
+        const r = await API.avisoComentar(id, comentario);
+        if (!r.ok) return toast(r.error || "Erro ao comentar.", "err");
+        input.value = "";
+        await loadAvisosSoft();
+        renderMural();
+      }
+    });
+  }
+
+  async function renderEquipe() {
+    await loadUsuariosSoft();
+    const isAdmin = (State.user?.role || "").toLowerCase() === "admin";
+
+    if (!isAdmin) {
+      UI.pageHost.innerHTML = card("Equipe", `<div class="muted">Somente o admin pode gerenciar usuários.</div>`);
+      return;
+    }
+
+    const list = State.usuarios.slice().sort((a,b)=> (a.nome||"").localeCompare(b.nome||"", "pt-BR"));
+
+    UI.pageHost.innerHTML = `
+      ${card("Lista", `
+        <div class="list" id="eq-list">
+          ${list.map(u => `
+            <div class="item">
+              <div class="item-main">
+                <div class="item-title">${escapeHtml(u.nome)} <span class="tag">${escapeHtml(u.role)}</span></div>
+                <div class="item-sub">@${escapeHtml(u.usuario)}</div>
+              </div>
+              <div class="row">
+                ${u.usuario === "admin" ? `<span class="muted">—</span>` : `<button class="btn danger" data-del="${u.id}">Excluir</button>`}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      `, `<button class="btn" id="btn-eq-refresh">Atualizar</button>`)}
+
+      ${card("Cadastrar membro", `
+        <div class="grid-2">
+          ${input("Nome", "eq-nome", "", "Nome completo")}
+          ${input("Usuário (login)", "eq-user", "", "Ex: joicecampos")}
+        </div>
+        <div class="grid-2">
+          ${input("Senha", "eq-pass", "", "Senha", "password")}
+          <label class="field">
+            <span>Role</span>
+            <select id="eq-role">
+              <option value="professor">professor</option>
+              <option value="auxiliar">auxiliar</option>
+              <option value="admin">admin</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <button class="btn primary" id="btn-eq-add">Cadastrar</button>
+          <span class="muted" id="eq-msg"></span>
+        </div>
+      `)}
+    `;
+
+    $("#btn-eq-refresh").onclick = async () => {
+      await loadUsuariosSoft();
+      renderEquipe();
+      toast("Atualizado.", "ok");
+    };
+
+    $("#btn-eq-add").onclick = async () => {
+      const nome = ($("#eq-nome").value || "").trim();
+      const usuario = ($("#eq-user").value || "").trim();
+      const senha = ($("#eq-pass").value || "").trim();
+      const role = ($("#eq-role").value || "auxiliar").trim();
+      const msg = $("#eq-msg");
+
+      msg.textContent = "";
+      if (!nome || !usuario || !senha) return msg.textContent = "Preencha nome, usuário e senha.";
+
+      const r = await API.equipeCreate({ nome, usuario, senha, role });
+      if (!r.ok) return toast(r.error || "Erro ao cadastrar usuário.", "err");
+
+      toast("Usuário cadastrado ✅", "ok");
+      $("#eq-nome").value = "";
+      $("#eq-user").value = "";
+      $("#eq-pass").value = "";
+      await loadUsuariosSoft();
+      renderEquipe();
+    };
+
+    $("#eq-list").addEventListener("click", async (e) => {
+      const del = e.target.closest("[data-del]");
+      if (!del) return;
+      const id = Number(del.dataset.del);
+      if (!confirm("Excluir este usuário?")) return;
+      const r = await API.equipeDelete(id);
+      if (!r.ok) return toast(r.error || "Erro ao excluir usuário.", "err");
+      toast("Usuário excluído.", "ok");
+      await loadUsuariosSoft();
+      renderEquipe();
+    });
+  }
+
+  async function renderConfig() {
+    UI.pageHost.innerHTML = `
+      ${card("Preferências", `
+        <div class="row between">
+          <div>
+            <div class="pill"><b>Versão</b> • v1.0</div>
+            <div class="muted">Desenvolvido por Equipe IEQ Central</div>
+          </div>
+          <button class="btn" id="btn-theme">Modo escuro</button>
+        </div>
+      `)}
+
+      ${card("Diagnóstico", `
+        <div class="muted">Verifique se o servidor está servindo arquivos estáticos</div>
+        <div class="row between">
+          <div class="muted" id="dg-out">—</div>
+          <button class="btn" id="btn-diag">Rodar /api/diag</button>
+        </div>
+      `)}
+
+      ${card("Sessão", `
+        <div class="row between">
+          <div class="muted">Encerrar a sessão atual neste dispositivo.</div>
+          <button class="btn danger" id="btn-sair">Sair</button>
+        </div>
+      `)}
+    `;
+
+    Theme.apply();
+
+    $("#btn-theme").onclick = () => {
+      Theme.toggle();
+      toast("Tema atualizado.", "ok");
+    };
+
+    $("#btn-diag").onclick = async () => {
+      $("#dg-out").textContent = "Rodando…";
+      const r = await API.request("/api/diag");
+      if (!r.ok) return $("#dg-out").textContent = "Erro: " + (r.error || "—");
+      $("#dg-out").textContent = `OK • ${r.static_files?.length || 0} arquivo(s)`;
+    };
+
+    $("#btn-sair").onclick = logout;
+  }
+
+  // =========================
+  // Events / Nav
+  // =========================
+  function wireNav() {
+    UI.navButtons.forEach(btn => {
+      btn.addEventListener("click", () => goto(btn.dataset.page));
+    });
+
+    UI.btnLogin?.addEventListener("click", doLogin);
+    UI.loginPass?.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+    UI.loginUser?.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+
+    UI.btnLogout?.addEventListener("click", logout);
+    UI.btnRefresh?.addEventListener("click", async () => {
+      await preloadAll();
+      goto(State.page || "home");
+      toast("Atualizado.", "ok");
+    });
+  }
+
+  // =========================
+  // Start
+  // =========================
+  document.addEventListener("DOMContentLoaded", () => {
+    wireNav();
+    boot();
+  });
+
 })();
