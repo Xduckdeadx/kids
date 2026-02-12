@@ -1,138 +1,137 @@
 /* static/js/app.js
    IEQ Central • Kid 2026
-   Frontend SPA sem framework
+   Frontend SPA sem framework (vanilla)
 */
 
 (() => {
   "use strict";
 
-  // ============ Helpers ============
+  // ========= Helpers =========
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+  const escapeHtml = (s) => {
+    const str = String(s ?? "");
+    return str
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  };
+
+  const fmtTS = (ts) => {
+    if (!ts) return "-";
+    try {
+      const d = new Date(ts);
+      return d.toLocaleString("pt-BR");
+    } catch {
+      return String(ts);
+    }
+  };
+
+  const downloadFile = async (url, filename = "relatorio.csv") => {
+    const res = await fetch(url, { headers: API.authHeaders() });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      UI.toast(`Falha ao baixar (${res.status})`, "err");
+      console.warn("download error:", t);
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  };
+
+  // ========= API =========
   const API = {
     tokenKey: "ieq_token",
     get token() { return localStorage.getItem(API.tokenKey) || ""; },
     set token(v) { localStorage.setItem(API.tokenKey, v || ""); },
     clearToken() { localStorage.removeItem(API.tokenKey); },
 
-    async request(path, { method="GET", body=null, headers={} } = {}) {
-      const h = { "Content-Type": "application/json", ...headers };
+    authHeaders() {
+      const h = {};
       if (API.token) h.Authorization = `Bearer ${API.token}`;
+      return h;
+    },
 
+    async request(path, { method = "GET", body = null, headers = {} } = {}) {
+      const h = { "Content-Type": "application/json", ...headers, ...API.authHeaders() };
       const opt = { method, headers: h };
       if (body) opt.body = JSON.stringify(body);
 
       const res = await fetch(path, opt);
+
       let data = null;
-
       try { data = await res.json(); }
-      catch { data = { ok:false, error:"Resposta inválida do servidor." }; }
+      catch { data = { ok: false, error: "Resposta inválida do servidor." }; }
 
-      if (!res.ok && data && data.ok !== true) {
-        // mantém o erro do backend
-      }
+      // mantém erro do backend
       return data;
     },
 
-    login(usuario, senha) {
-      return API.request("/api/login", { method:"POST", body:{ usuario, senha } });
-    },
+    // Auth
+    login(usuario, senha) { return API.request("/api/login", { method: "POST", body: { usuario, senha } }); },
     me() { return API.request("/api/me"); },
+
+    // Stats
+    stats() { return API.request("/api/stats"); },
 
     // Alunos
     alunosList() { return API.request("/api/alunos"); },
-    alunoCreate(nome) { return API.request("/api/alunos", { method:"POST", body:{ nome } }); },
-    alunoDelete(id) { return API.request(`/api/alunos/${id}`, { method:"DELETE" }); },
+    alunoCreate(nome) { return API.request("/api/alunos", { method: "POST", body: { nome } }); },
+    alunoDelete(id) { return API.request(`/api/alunos/${id}`, { method: "DELETE" }); },
 
-    // Equipe
+    // Responsáveis
+    respList(alunoId) { return API.request(`/api/alunos/${alunoId}/responsaveis`); },
+    respCreate(alunoId, nome) { return API.request(`/api/alunos/${alunoId}/responsaveis`, { method: "POST", body: { nome } }); },
+    respDelete(alunoId, respId) { return API.request(`/api/alunos/${alunoId}/responsaveis/${respId}`, { method: "DELETE" }); },
+
+    // Usuários (admin)
     usuariosList() { return API.request("/api/usuarios"); },
     usuarioCreate(nome, usuario, senha, role) {
-      return API.request("/api/usuarios", { method:"POST", body:{ nome, usuario, senha, role } });
+      return API.request("/api/equipe", { method: "POST", body: { nome, usuario, senha, role } });
     },
-    usuarioDelete(id) { return API.request(`/api/usuarios/${id}`, { method:"DELETE" }); },
+    usuarioDelete(id) { return API.request(`/api/equipe/${id}`, { method: "DELETE" }); },
 
     // Aulas
     aulaAtiva() { return API.request("/api/aulas/ativa"); },
-    aulaIniciar(professores, tema) {
-      return API.request("/api/aulas/iniciar", { method:"POST", body:{ professores, tema } });
+    aulaIniciarManual(professores, tema) {
+      return API.request("/api/aulas/iniciar", { method: "POST", body: { professores, tema } });
     },
-    aulaEncerrar(aula_id) {
-      return API.request("/api/aulas/encerrar", { method:"POST", body:{ aula_id } });
+    aulaIniciarPorIds(professor_id, auxiliar_id, tema) {
+      return API.request("/api/aulas/iniciar", { method: "POST", body: { professor_id, auxiliar_id, tema } });
     },
+    aulaEncerrar() { return API.request("/api/aulas/encerrar", { method: "POST", body: {} }); },
     aulaEntrada(aula_id, aluno_id) {
-      return API.request("/api/aulas/entrada", { method:"POST", body:{ aula_id, aluno_id } });
+      return API.request("/api/aulas/entrada", { method: "POST", body: { aula_id, aluno_id } });
     },
     aulaSaida(aula_id, aluno_id, retirado_por) {
-      return API.request("/api/aulas/saida", { method:"POST", body:{ aula_id, aluno_id, retirado_por } });
+      return API.request("/api/aulas/saida", { method: "POST", body: { aula_id, aluno_id, retirado_por } });
     },
 
     // Histórico
     historico() { return API.request("/api/historico"); },
+    relatorio(aulaId) { return API.request(`/api/aulas/${aulaId}/relatorio`); },
 
     // Mural
     avisosList() { return API.request("/api/avisos"); },
-    avisoCreate(mensagem) {
-      return API.request("/api/avisos", { method:"POST", body:{ mensagem } });
-    },
-    avisoFixar(id, fixado) {
-      return API.request(`/api/avisos/${id}`, { method:"PUT", body:{ fixado } });
-    },
-    avisoDelete(id) { return API.request(`/api/avisos/${id}`, { method:"DELETE" }); },
+    avisoCreate(mensagem) { return API.request("/api/avisos", { method: "POST", body: { mensagem } }); },
+    avisoFixar(id, fixado) { return API.request(`/api/avisos/${id}/fixar`, { method: "POST", body: { fixado } }); },
+    avisoDelete(id) { return API.request(`/api/avisos/${id}`, { method: "DELETE" }); },
   };
 
-  // ============ UI ============
+  // ========= UI Shell =========
   const UI = {
-    loading: $("#loading"),
-    loadingStatus: $("#loading-status"),
-    loginWrap: $("#login-wrap"),
-    app: $("#app"),
+    root: null,
 
-    loginUser: $("#login-user"),
-    loginPass: $("#login-pass"),
-    btnLogin: $("#btn-login"),
-    loginMsg: $("#login-msg"),
-
-    pageTitle: $("#page-title"),
-    pageMeta: $("#page-meta"),
-    pillStatus: $("#pill-status"),
-
-    // pages
-    pages: {
-      home: $("#page-home"),
-      alunos: $("#page-alunos"),
-      equipe: $("#page-equipe"),
-      aulas: $("#page-aulas"),
-      ativa: $("#page-ativa"),
-      historico: $("#page-historico"),
-      mural: $("#page-mural"),
-      config: $("#page-config"),
-    },
-
-    // nav
-    navButtons: $$(".nav button"),
-
-    setLoading(on, msg="") {
-      if (!UI.loading) return;
-      UI.loading.style.display = on ? "flex" : "none";
-      if (UI.loadingStatus && msg) UI.loadingStatus.textContent = msg;
-    },
-
-    showLogin(msg="") {
-      UI.app.style.display = "none";
-      UI.loginWrap.style.display = "flex";
-      UI.setLoading(false);
-      UI.loginMsg.textContent = msg || "";
-    },
-
-    showApp() {
-      UI.loginWrap.style.display = "none";
-      UI.app.style.display = "block";
-      UI.setLoading(false);
-    },
-
-    toast(text, type="ok") {
-      // simples, sem biblioteca
+    toast(text, type = "ok") {
       const el = document.createElement("div");
       el.style.position = "fixed";
       el.style.right = "18px";
@@ -149,183 +148,376 @@
       setTimeout(() => el.remove(), 2400);
     },
 
-    setStatusPill(text, kind="warn") {
-      UI.pillStatus.textContent = text;
-      UI.pillStatus.classList.remove("ok","warn");
-      UI.pillStatus.classList.add(kind);
+    modal({ title = "Modal", bodyHtml = "", onClose = null, footerHtml = "" }) {
+      const wrap = document.createElement("div");
+      wrap.className = "modal";
+      wrap.innerHTML = `
+        <div class="modal-card">
+          <div class="modal-head">
+            <div class="modal-title">${escapeHtml(title)}</div>
+            <button class="iconbtn" data-x title="Fechar">✕</button>
+          </div>
+          <div class="modal-body">${bodyHtml}</div>
+          <div class="modal-foot">${footerHtml}</div>
+        </div>
+      `;
+      document.body.appendChild(wrap);
+
+      const close = () => {
+        wrap.remove();
+        if (typeof onClose === "function") onClose();
+      };
+
+      wrap.addEventListener("click", (e) => {
+        if (e.target === wrap) close();
+      });
+      wrap.querySelector("[data-x]").onclick = close;
+
+      return { el: wrap, close };
     },
 
-    setPage(name, title) {
-      UI.navButtons.forEach(b => b.classList.toggle("active", b.dataset.page === name));
-      Object.entries(UI.pages).forEach(([k, el]) => el.style.display = (k === name ? "block" : "none"));
-      UI.pageTitle.textContent = title || "IEQ Central";
+    renderLogin() {
+      UI.root.innerHTML = `
+        <div class="login">
+          <div class="login-card">
+            <div class="brand">
+              <div class="brand-icon">👶</div>
+              <div>
+                <div class="brand-title">IEQ Central</div>
+                <div class="brand-sub">Ministério Infantil • Kid 2026</div>
+              </div>
+            </div>
+
+            <div class="form">
+              <label>Usuário</label>
+              <input id="l-user" placeholder="admin" />
+              <label>Senha</label>
+              <input id="l-pass" type="password" placeholder="1234" />
+              <div class="msg" id="l-msg"></div>
+              <button class="btn btn-primary" id="l-btn">Entrar</button>
+            </div>
+
+            <div class="login-foot">
+              <div class="pill">PWA • Offline parcial</div>
+              <div class="pill">Aulas • Presença • Relatório</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      $("#l-btn").onclick = async () => {
+        const u = ($("#l-user").value || "").trim();
+        const p = ($("#l-pass").value || "").trim();
+        $("#l-msg").textContent = "";
+
+        if (!u || !p) { $("#l-msg").textContent = "Preencha usuário e senha."; return; }
+
+        const r = await API.login(u, p);
+        if (r.ok) {
+          API.token = r.token;
+          State.user = r.user;
+          UI.toast("Login OK ✅");
+          UI.renderAppShell();
+          goto("home");
+        } else {
+          $("#l-msg").textContent = r.error || "Falha no login.";
+        }
+      };
     },
 
-    fmtTS(ts) {
-      if (!ts) return "-";
-      try {
-        const d = new Date(ts);
-        return d.toLocaleString("pt-BR");
-      } catch { return String(ts); }
-    }
+    renderAppShell() {
+      UI.root.innerHTML = `
+        <div class="app">
+          <aside class="sidebar" id="sidebar">
+            <div class="side-top">
+              <div class="side-brand">
+                <div class="side-logo">👶</div>
+                <div>
+                  <div class="side-title">IEQ Central</div>
+                  <div class="side-sub">Kid 2026</div>
+                </div>
+              </div>
+
+              <div class="side-user">
+                <div class="avatar">${escapeHtml((State.user?.nome || "?").slice(0,1).toUpperCase())}</div>
+                <div>
+                  <div class="side-user-name">${escapeHtml(State.user?.nome || "-")}</div>
+                  <div class="side-user-role">${escapeHtml(State.user?.role || "-")}</div>
+                </div>
+              </div>
+
+              <div class="side-menu nav">
+                <button class="side-item active" data-page="home">🏠 Home</button>
+                <button class="side-item" data-page="aulas">🎓 Iniciar aula</button>
+                <button class="side-item" data-page="ativa">✅ Aula ativa</button>
+                <button class="side-item" data-page="alunos">👧 Alunos</button>
+                <button class="side-item" data-page="historico">🗂️ Histórico</button>
+                <button class="side-item" data-page="mural">📌 Mural</button>
+                <button class="side-item" data-page="equipe">👥 Equipe</button>
+                <button class="side-item" data-page="config">⚙️ Config</button>
+              </div>
+            </div>
+
+            <div class="side-bottom">
+              <button class="btn btn-outline" id="btn-logout" style="width:100%;">Sair</button>
+              <div class="side-ver">v1.0 • ${escapeHtml(APP_NAME)}</div>
+            </div>
+          </aside>
+
+          <main class="main">
+            <div class="topbar">
+              <div class="topbar-left">
+                <button class="iconbtn" id="btn-menu" title="Menu">☰</button>
+                <div>
+                  <div class="page-title" id="page-title">IEQ Central</div>
+                  <div class="page-sub" id="page-sub">—</div>
+                </div>
+              </div>
+              <div class="tag" id="pill-status">Status</div>
+            </div>
+
+            <div class="page" id="page"></div>
+          </main>
+        </div>
+      `;
+
+      $("#btn-logout").onclick = () => {
+        API.clearToken();
+        State.reset();
+        UI.renderLogin();
+      };
+
+      $("#btn-menu").onclick = () => {
+        const sb = $("#sidebar");
+        sb.classList.toggle("open");
+      };
+
+      $$(".nav button").forEach(b => {
+        b.onclick = () => goto(b.dataset.page);
+      });
+    },
+
+    setHeader(title, sub = "") {
+      $("#page-title").textContent = title;
+      $("#page-sub").textContent = sub;
+    },
+
+    setStatus(text, kind = "warn") {
+      const pill = $("#pill-status");
+      pill.textContent = text;
+      pill.classList.remove("ok", "warn");
+      pill.classList.add(kind);
+    },
   };
 
-  // ============ State ============
+  // ========= State =========
   const State = {
     user: null,
     aulaAtiva: null,
     alunos: [],
-    usuarios: [],
+    usuarios: [], // admin only
+    reset() {
+      State.user = null;
+      State.aulaAtiva = null;
+      State.alunos = [];
+      State.usuarios = [];
+    }
   };
 
-  // ============ Renderers ============
-  function renderHome() {
-    const box = UI.pages.home;
-    box.innerHTML = `
-      <h2 style="margin:0 0 8px;">Bem-vindo 👋</h2>
-      <div class="muted">Use o menu para gerenciar alunos, equipe, aulas e presença.</div>
-      <div style="height:14px;"></div>
-      <div class="row">
-        <div class="card section">
-          <div style="font-weight:900;">Aula ativa</div>
-          <div class="muted" id="home-aula-ativa" style="margin-top:6px;">Carregando…</div>
-          <div class="actions" style="margin-top:10px;">
-            <button id="home-open-ativa" class="btn primary small">Abrir aula ativa</button>
-            <button id="home-refresh" class="btn small">Atualizar</button>
+  // ========= Pages =========
+  async function goto(page) {
+    // fecha sidebar no mobile
+    $("#sidebar")?.classList.remove("open");
+
+    // highlight
+    $$(".nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
+
+    // render
+    if (page === "home") return renderHome();
+    if (page === "aulas") return renderAulas();
+    if (page === "ativa") return renderAtiva();
+    if (page === "alunos") return renderAlunos();
+    if (page === "historico") return renderHistorico();
+    if (page === "mural") return renderMural();
+    if (page === "equipe") return renderEquipe();
+    if (page === "config") return renderConfig();
+
+    renderHome();
+  }
+
+  async function renderHome() {
+    UI.setHeader("Home", "Visão geral e status do sistema");
+    $("#page").innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Status</div>
+            <div class="card-sub">Resumo rápido</div>
           </div>
+          <button class="btn btn-outline" id="btn-home-refresh">Atualizar</button>
         </div>
-        <div class="card section">
-          <div style="font-weight:900;">Sessão</div>
-          <div class="muted" style="margin-top:8px;">
-            <div><b>Usuário:</b> ${escapeHtml(State.user?.usuario || "-")}</div>
-            <div><b>Nome:</b> ${escapeHtml(State.user?.nome || "-")}</div>
-            <div><b>Role:</b> ${escapeHtml(State.user?.role || "-")}</div>
-          </div>
+
+        <div class="grid stats" id="home-stats">
+          <div class="stat"><div class="stat-ico">👧</div><div class="stat-val">—</div><div class="stat-lab">Alunos</div></div>
+          <div class="stat"><div class="stat-ico">👥</div><div class="stat-val">—</div><div class="stat-lab">Equipe</div></div>
+          <div class="stat"><div class="stat-ico">🎓</div><div class="stat-val">—</div><div class="stat-lab">Aula ativa</div></div>
+          <div class="stat"><div class="stat-ico">✅</div><div class="stat-val">—</div><div class="stat-lab">Presentes</div></div>
         </div>
       </div>
-      <div style="height:10px;"></div>
-      <div class="card section">
-        <div style="font-weight:900;">Dica</div>
-        <div class="muted" style="margin-top:8px;">
-          Para fazer check-in, primeiro <b>inicie uma aula</b> (menu Aulas). Depois entre em <b>Aula ativa</b>.
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Atalhos</div>
+            <div class="card-sub">Ir direto ao ponto</div>
+          </div>
+        </div>
+
+        <div class="grid quick">
+          <button class="quickbtn" id="q-start">
+            <i>🎓</i>
+            <div><div class="q-title">Iniciar aula</div><div class="q-sub">Selecione prof/aux e tema</div></div>
+          </button>
+          <button class="quickbtn" id="q-ativa">
+            <i>✅</i>
+            <div><div class="q-title">Aula ativa</div><div class="q-sub">Check-in e check-out</div></div>
+          </button>
+          <button class="quickbtn" id="q-alunos">
+            <i>👧</i>
+            <div><div class="q-title">Alunos</div><div class="q-sub">Cadastro + responsáveis</div></div>
+          </button>
         </div>
       </div>
     `;
 
-    $("#home-open-ativa").onclick = () => goto("ativa");
-    $("#home-refresh").onclick = () => refreshAll();
+    $("#q-start").onclick = () => goto("aulas");
+    $("#q-ativa").onclick = () => goto("ativa");
+    $("#q-alunos").onclick = () => goto("alunos");
+    $("#btn-home-refresh").onclick = () => renderHome();
 
-    refreshAulaAtivaHome();
-  }
-
-  async function refreshAulaAtivaHome() {
-    const out = $("#home-aula-ativa");
-    if (!out) return;
-    out.textContent = "Verificando…";
-
-    const data = await API.aulaAtiva();
-    if (data.ok) {
-      State.aulaAtiva = data.aula || null;
-
-      if (State.aulaAtiva) {
-        out.innerHTML = `
-          <b>ID:</b> ${State.aulaAtiva.id} <br>
-          <b>Tema:</b> ${escapeHtml(State.aulaAtiva.tema || "-")} <br>
-          <b>Professores:</b> ${escapeHtml(State.aulaAtiva.professores || "-")} <br>
-          <b>Início:</b> ${UI.fmtTS(State.aulaAtiva.data_aula)}
-        `;
-        UI.setStatusPill("Aula ativa", "ok");
-      } else {
-        out.textContent = "Nenhuma aula ativa agora.";
-        UI.setStatusPill("Sem aula ativa", "warn");
-      }
-    } else {
-      out.textContent = data.error || "Falha ao verificar aula ativa.";
-      UI.setStatusPill("Erro", "warn");
+    // load stats
+    const st = await API.stats();
+    const sbox = $("#home-stats");
+    if (!st.ok) {
+      UI.setStatus("Erro", "warn");
+      UI.toast(st.error || "Falha ao carregar stats", "err");
+      return;
     }
+
+    UI.setStatus(st.aula_ativa ? "Aula ativa" : "Sem aula ativa", st.aula_ativa ? "ok" : "warn");
+
+    const vals = [
+      st.total_alunos ?? "-",
+      st.total_equipe ?? "-",
+      st.aula_ativa ? "Sim" : "Não",
+      st.presentes ?? "-"
+    ];
+    $$("#home-stats .stat-val").forEach((el, i) => el.textContent = String(vals[i] ?? "-"));
   }
 
-  function renderAlunos() {
-    const box = UI.pages.alunos;
-
-    box.innerHTML = `
-      <h2 style="margin:0 0 8px;">Alunos</h2>
-      <div class="muted">Cadastrar e listar alunos. (Professor/Auxiliar também pode cadastrar)</div>
-      <div style="height:12px;"></div>
-
-      <div class="row">
-        <div class="card section">
-          <div style="font-weight:900;">Cadastrar aluno</div>
-          <input id="novo-aluno" class="input" placeholder="Nome do aluno" />
-          <div class="actions" style="margin-top:12px;">
-            <button id="btn-add-aluno" class="btn primary small">Cadastrar</button>
-            <button id="btn-refresh-alunos" class="btn small">Atualizar</button>
-          </div>
-          <div id="aluno-msg" class="muted" style="margin-top:10px;"></div>
-        </div>
-
-        <div class="card section">
-          <div style="font-weight:900;">Lista</div>
-          <input id="aluno-q" class="input" placeholder="Pesquisar..." style="margin-top:10px;" />
-          <div style="overflow:auto; max-height: 360px; margin-top:10px;">
-            <table>
-              <thead><tr><th>Nome</th><th style="width:120px;">Ações</th></tr></thead>
-              <tbody id="t-alunos"></tbody>
-            </table>
+  async function renderAlunos() {
+    UI.setHeader("Alunos", "Cadastrar alunos e responsáveis autorizados");
+    $("#page").innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Cadastrar aluno</div>
+            <div class="card-sub">Nome único</div>
           </div>
         </div>
+
+        <div class="toolbar">
+          <div class="search">
+            <span>👧</span>
+            <input id="al-nome" placeholder="Nome do aluno" />
+          </div>
+          <button class="btn btn-primary" id="al-add">Cadastrar</button>
+          <button class="btn btn-outline" id="al-refresh">Atualizar</button>
+        </div>
+
+        <div class="hint" id="al-msg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Lista</div>
+            <div class="card-sub">Gerencie responsáveis e exclusões</div>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search">
+            <span>🔎</span>
+            <input id="al-q" placeholder="Pesquisar..." />
+          </div>
+        </div>
+
+        <div class="list" id="al-list"></div>
       </div>
     `;
 
-    $("#btn-add-aluno").onclick = async () => {
-      const nome = ($("#novo-aluno").value || "").trim();
-      const msg = $("#aluno-msg");
-      msg.textContent = "";
-
-      if (!nome) { msg.textContent = "Digite o nome."; return; }
+    $("#al-add").onclick = async () => {
+      const nome = ($("#al-nome").value || "").trim();
+      $("#al-msg").textContent = "";
+      if (!nome) { $("#al-msg").textContent = "Digite o nome do aluno."; return; }
 
       const r = await API.alunoCreate(nome);
       if (r.ok) {
         UI.toast("Aluno cadastrado ✅");
-        $("#novo-aluno").value = "";
+        $("#al-nome").value = "";
         await loadAlunos();
-        fillAlunosTable();
+        paintAlunos();
       } else {
-        msg.textContent = r.error || "Erro ao cadastrar aluno.";
+        $("#al-msg").textContent = r.error || "Erro ao cadastrar.";
       }
     };
 
-    $("#btn-refresh-alunos").onclick = async () => {
+    $("#al-refresh").onclick = async () => {
       await loadAlunos();
-      fillAlunosTable();
+      paintAlunos();
     };
 
-    $("#aluno-q").oninput = () => fillAlunosTable();
+    $("#al-q").oninput = () => paintAlunos();
 
-    loadAlunos().then(fillAlunosTable);
+    await loadAlunos();
+    paintAlunos();
   }
 
-  function fillAlunosTable() {
-    const tb = $("#t-alunos");
-    if (!tb) return;
+  async function loadAlunos() {
+    const r = await API.alunosList();
+    if (!r.ok) {
+      UI.toast(r.error || "Erro ao listar alunos", "err");
+      State.alunos = [];
+      return;
+    }
+    State.alunos = r.alunos || [];
+  }
 
-    const q = ($("#aluno-q")?.value || "").trim().toLowerCase();
+  function paintAlunos() {
+    const box = $("#al-list");
+    const q = ($("#al-q").value || "").trim().toLowerCase();
+
     const rows = (State.alunos || [])
       .filter(a => !q || (a.nome || "").toLowerCase().includes(q))
       .map(a => `
-        <tr>
-          <td>${escapeHtml(a.nome)}</td>
-          <td>
-            <div class="actions">
-              <button class="btn small" data-del="${a.id}">Excluir</button>
+        <div class="item">
+          <div class="item-left">
+            <div>
+              <div class="item-title">${escapeHtml(a.nome)}</div>
+              <div class="item-sub">ID: ${a.id}</div>
             </div>
-          </td>
-        </tr>
+          </div>
+          <div class="item-actions">
+            <button class="btn btn-outline" data-resp="${a.id}">Responsáveis</button>
+            <button class="btn btn-danger" data-del="${a.id}">Excluir</button>
+          </div>
+        </div>
       `).join("");
 
-    tb.innerHTML = rows || `<tr><td colspan="2" class="muted">Nenhum aluno encontrado.</td></tr>`;
+    box.innerHTML = rows || `<div class="hint">Nenhum aluno.</div>`;
 
-    $$("button[data-del]").forEach(btn => {
+    $$("[data-del]").forEach(btn => {
       btn.onclick = async () => {
         const id = btn.getAttribute("data-del");
         if (!confirm("Excluir este aluno?")) return;
@@ -333,84 +525,167 @@
         if (r.ok) {
           UI.toast("Aluno excluído");
           await loadAlunos();
-          fillAlunosTable();
+          paintAlunos();
         } else {
           UI.toast(r.error || "Erro ao excluir", "err");
         }
       };
     });
+
+    $$("[data-resp]").forEach(btn => {
+      btn.onclick = async () => {
+        const alunoId = btn.getAttribute("data-resp");
+        const aluno = State.alunos.find(x => String(x.id) === String(alunoId));
+        await openResponsaveisModal(alunoId, aluno?.nome || "Aluno");
+      };
+    });
   }
 
-  function renderEquipe() {
-    const box = UI.pages.equipe;
+  async function openResponsaveisModal(alunoId, alunoNome) {
+    const modal = UI.modal({
+      title: `Responsáveis • ${alunoNome}`,
+      bodyHtml: `
+        <div class="field">
+          <label>Novo responsável</label>
+          <input id="r-nome" placeholder="Ex: Mãe, Pai, Avó..." />
+        </div>
+        <div style="height:10px;"></div>
+        <div class="toolbar">
+          <button class="btn btn-primary" id="r-add">Adicionar</button>
+          <button class="btn btn-outline" id="r-refresh">Atualizar</button>
+        </div>
+        <div class="hint" id="r-msg"></div>
+        <div style="height:8px;"></div>
+        <div class="list" id="r-list"></div>
+      `,
+      footerHtml: `<button class="btn btn-outline" data-close>Fechar</button>`
+    });
+
+    modal.el.querySelector("[data-close]").onclick = modal.close;
+
+    async function refresh() {
+      $("#r-msg").textContent = "Carregando…";
+      const r = await API.respList(alunoId);
+      if (!r.ok) {
+        $("#r-msg").textContent = r.error || "Erro ao listar.";
+        $("#r-list").innerHTML = "";
+        return;
+      }
+      const list = r.responsaveis || [];
+      $("#r-msg").textContent = list.length ? "" : "Nenhum responsável cadastrado (saída ficará bloqueada).";
+      $("#r-list").innerHTML = list.map(x => `
+        <div class="item">
+          <div class="item-left">
+            <div>
+              <div class="item-title">${escapeHtml(x.nome)}</div>
+              <div class="item-sub">ID: ${x.id}</div>
+            </div>
+          </div>
+          <div class="item-actions">
+            <button class="btn btn-danger" data-rdel="${x.id}">Excluir</button>
+          </div>
+        </div>
+      `).join("") || `<div class="hint">Cadastre pelo menos 1 responsável.</div>`;
+
+      $$("[data-rdel]").forEach(b => {
+        b.onclick = async () => {
+          const rid = b.getAttribute("data-rdel");
+          if (!confirm("Excluir responsável?")) return;
+          const rr = await API.respDelete(alunoId, rid);
+          if (rr.ok) { UI.toast("Excluído"); refresh(); }
+          else UI.toast(rr.error || "Erro", "err");
+        };
+      });
+    }
+
+    $("#r-add").onclick = async () => {
+      const nome = ($("#r-nome").value || "").trim();
+      if (!nome) { $("#r-msg").textContent = "Digite o nome do responsável."; return; }
+      const r = await API.respCreate(alunoId, nome);
+      if (r.ok) {
+        UI.toast("Responsável adicionado ✅");
+        $("#r-nome").value = "";
+        refresh();
+      } else {
+        $("#r-msg").textContent = r.error || "Erro ao adicionar.";
+      }
+    };
+
+    $("#r-refresh").onclick = refresh;
+
+    refresh();
+  }
+
+  async function renderEquipe() {
+    UI.setHeader("Equipe", "Somente admin gerencia usuários");
     const isAdmin = State.user?.role === "admin";
 
-    box.innerHTML = `
-      <h2 style="margin:0 0 8px;">Equipe</h2>
-      <div class="muted">Listar equipe (cadastro de equipe só admin).</div>
-      <div style="height:12px;"></div>
-
-      <div class="row">
-        <div class="card section">
-          <div style="font-weight:900;">Pesquisar</div>
-          <input id="user-q" class="input" placeholder="Pesquisar..." style="margin-top:10px;" />
-          <div class="actions" style="margin-top:12px;">
-            <button id="btn-refresh-users" class="btn small">Atualizar</button>
+    $("#page").innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Lista</div>
+            <div class="card-sub">${isAdmin ? "Gerencie logins e permissões." : "Você não é admin. Somente visual."}</div>
           </div>
+          <button class="btn btn-outline" id="u-refresh">Atualizar</button>
+        </div>
 
-          <div style="overflow:auto; max-height: 360px; margin-top:12px;">
-            <table>
-              <thead><tr><th>Nome</th><th>Usuário</th><th>Role</th><th style="width:120px;">Ações</th></tr></thead>
-              <tbody id="t-users"></tbody>
-            </table>
+        <div class="hint" id="u-msg"></div>
+        <div class="list" id="u-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Cadastrar membro</div>
+            <div class="card-sub">Admin apenas</div>
           </div>
         </div>
 
-        <div class="card section">
-          <div style="font-weight:900;">Cadastrar membro</div>
-          <div class="muted" style="margin-top:6px;">
-            ${isAdmin ? "Somente admin pode cadastrar equipe." : "Você não tem permissão para cadastrar equipe."}
+        <div class="grid2">
+          <div class="field">
+            <label>Nome</label>
+            <input id="u-nome" ${isAdmin ? "" : "disabled"} />
           </div>
-          <div style="height:10px;"></div>
-
-          <input id="u-nome" class="input" placeholder="Nome" ${isAdmin ? "" : "disabled"} />
-          <div style="height:10px;"></div>
-          <input id="u-usuario" class="input" placeholder="Usuário (login)" ${isAdmin ? "" : "disabled"} />
-          <div style="height:10px;"></div>
-          <input id="u-senha" class="input" type="password" placeholder="Senha" ${isAdmin ? "" : "disabled"} />
-          <div style="height:10px;"></div>
-          <select id="u-role" class="input" ${isAdmin ? "" : "disabled"}>
-            <option value="professor">professor</option>
-            <option value="auxiliar">auxiliar</option>
-            <option value="admin">admin</option>
-          </select>
-
-          <div class="actions" style="margin-top:12px;">
-            <button id="btn-add-user" class="btn primary small" ${isAdmin ? "" : "disabled"}>Cadastrar</button>
+          <div class="field">
+            <label>Usuário (login)</label>
+            <input id="u-user" ${isAdmin ? "" : "disabled"} />
           </div>
-
-          <div id="user-msg" class="muted" style="margin-top:10px;"></div>
+          <div class="field">
+            <label>Senha</label>
+            <input id="u-pass" type="password" ${isAdmin ? "" : "disabled"} />
+          </div>
+          <div class="field">
+            <label>Role</label>
+            <select id="u-role" ${isAdmin ? "" : "disabled"}>
+              <option value="professor">professor</option>
+              <option value="auxiliar">auxiliar</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
         </div>
+
+        <div style="height:12px;"></div>
+        <button class="btn btn-primary" id="u-add" ${isAdmin ? "" : "disabled"}>Cadastrar</button>
+        <div class="hint" id="u-addmsg"></div>
       </div>
     `;
 
-    $("#btn-refresh-users").onclick = async () => {
-      await loadUsuarios();
-      fillUsersTable();
+    $("#u-refresh").onclick = async () => {
+      await loadUsuariosAdmin();
+      paintUsuarios();
     };
-    $("#user-q").oninput = () => fillUsersTable();
 
     if (isAdmin) {
-      $("#btn-add-user").onclick = async () => {
+      $("#u-add").onclick = async () => {
         const nome = ($("#u-nome").value || "").trim();
-        const usuario = ($("#u-usuario").value || "").trim();
-        const senha = ($("#u-senha").value || "").trim();
-        const role = ($("#u-role").value || "professor").trim();
-        const msg = $("#user-msg");
-        msg.textContent = "";
+        const usuario = ($("#u-user").value || "").trim();
+        const senha = ($("#u-pass").value || "").trim();
+        const role = ($("#u-role").value || "auxiliar").trim();
+        $("#u-addmsg").textContent = "";
 
-        if (!nome || !usuario || !senha || !role) {
-          msg.textContent = "Preencha todos os campos.";
+        if (!nome || !usuario || !senha) {
+          $("#u-addmsg").textContent = "Preencha nome, usuário e senha.";
           return;
         }
 
@@ -418,105 +693,162 @@
         if (r.ok) {
           UI.toast("Usuário criado ✅");
           $("#u-nome").value = "";
-          $("#u-usuario").value = "";
-          $("#u-senha").value = "";
-          await loadUsuarios();
-          fillUsersTable();
+          $("#u-user").value = "";
+          $("#u-pass").value = "";
+          await loadUsuariosAdmin();
+          paintUsuarios();
         } else {
-          msg.textContent = r.error || "Erro ao criar usuário.";
+          $("#u-addmsg").textContent = r.error || "Erro ao cadastrar.";
         }
       };
     }
 
-    loadUsuarios().then(fillUsersTable);
+    await loadUsuariosAdmin();
+    paintUsuarios();
   }
 
-  function fillUsersTable() {
-    const tb = $("#t-users");
-    if (!tb) return;
+  async function loadUsuariosAdmin() {
+    $("#u-msg").textContent = "Carregando…";
+    const r = await API.usuariosList();
+    if (!r.ok) {
+      $("#u-msg").textContent = r.error || "Sem permissão (somente admin).";
+      State.usuarios = [];
+      return;
+    }
+    // backend devolve {usuarios: [...]}
+    State.usuarios = r.usuarios || [];
+    $("#u-msg").textContent = "";
+  }
 
-    const q = ($("#user-q")?.value || "").trim().toLowerCase();
+  function paintUsuarios() {
+    const box = $("#u-list");
     const isAdmin = State.user?.role === "admin";
+    box.innerHTML = (State.usuarios || []).map(u => `
+      <div class="item">
+        <div class="item-left">
+          <div>
+            <div class="item-title">${escapeHtml(u.nome)} <span class="tag">${escapeHtml(u.role)}</span></div>
+            <div class="item-sub">@${escapeHtml(u.usuario)}</div>
+          </div>
+        </div>
+        <div class="item-actions">
+          ${isAdmin && u.usuario !== "admin" ? `<button class="btn btn-danger" data-udel="${u.id}">Excluir</button>` : `<span class="tag">—</span>`}
+        </div>
+      </div>
+    `).join("") || `<div class="hint">Nenhum usuário.</div>`;
 
-    const rows = (State.usuarios || [])
-      .filter(u => !q || `${u.nome||""} ${u.usuario||""} ${u.role||""}`.toLowerCase().includes(q))
-      .map(u => `
-        <tr>
-          <td>${escapeHtml(u.nome || "")}</td>
-          <td>${escapeHtml(u.usuario || "")}</td>
-          <td>${escapeHtml(u.role || "")}</td>
-          <td>
-            ${isAdmin && u.usuario !== "admin"
-              ? `<button class="btn small" data-udel="${u.id}">Excluir</button>`
-              : `<span class="muted">-</span>`}
-          </td>
-        </tr>
-      `).join("");
-
-    tb.innerHTML = rows || `<tr><td colspan="4" class="muted">Nenhum usuário.</td></tr>`;
-
-    $$("button[data-udel]").forEach(btn => {
-      btn.onclick = async () => {
-        const id = btn.getAttribute("data-udel");
-        if (!confirm("Excluir este usuário?")) return;
+    $$("[data-udel]").forEach(b => {
+      b.onclick = async () => {
+        const id = b.getAttribute("data-udel");
+        if (!confirm("Excluir usuário?")) return;
         const r = await API.usuarioDelete(id);
-        if (r.ok) {
-          UI.toast("Usuário excluído");
-          await loadUsuarios();
-          fillUsersTable();
-        } else {
-          UI.toast(r.error || "Erro ao excluir", "err");
-        }
+        if (r.ok) { UI.toast("Excluído"); await loadUsuariosAdmin(); paintUsuarios(); }
+        else UI.toast(r.error || "Erro", "err");
       };
     });
   }
 
-  function renderAulas() {
-    const box = UI.pages.aulas;
+  async function renderAulas() {
+    UI.setHeader("Iniciar aula", "Escolha professor, auxiliar e tema");
 
-    box.innerHTML = `
-      <h2 style="margin:0 0 8px;">Aulas</h2>
-      <div class="muted">Professor + auxiliar + tema. Ao iniciar, você vai para a tela “Aula ativa”.</div>
-      <div style="height:14px;"></div>
-
-      <div class="card section">
-        <div class="row">
+    $("#page").innerHTML = `
+      <div class="card">
+        <div class="card-head">
           <div>
-            <label style="font-weight:900;">Professor</label>
-            <input id="a-prof" class="input" placeholder="Ex: Prof. Maria" />
+            <div class="card-title">Nova aula</div>
+            <div class="card-sub">Ao iniciar, a aula fica ativa para toda a equipe.</div>
           </div>
-          <div>
-            <label style="font-weight:900;">Auxiliar</label>
-            <input id="a-aux" class="input" placeholder="Ex: Tia Ana" />
+          <button class="btn btn-outline" id="a-check">Ver aula ativa</button>
+        </div>
+
+        <div class="hint" id="a-hint">
+          Se você for admin, dá pra usar lista de equipe. Se não, use modo manual (texto).
+        </div>
+
+        <div class="grid2">
+          <div class="field">
+            <label>Professor (modo lista - admin)</label>
+            <select id="a-prof-sel">
+              <option value="">(sem permissão / vazio)</option>
+            </select>
+            <div class="small">Se não aparecer, use modo manual abaixo.</div>
+          </div>
+          <div class="field">
+            <label>Auxiliar (modo lista - admin)</label>
+            <select id="a-aux-sel">
+              <option value="">(opcional)</option>
+            </select>
           </div>
         </div>
+
         <div style="height:12px;"></div>
-        <label style="font-weight:900;">Tema</label>
-        <input id="a-tema" class="input" placeholder="Ex: O Bom Pastor" />
-        <div class="actions" style="margin-top:14px;">
-          <button id="btn-iniciar-aula" class="btn primary">Iniciar aula</button>
-          <button id="btn-ir-ativa" class="btn">Abrir aula ativa</button>
+
+        <div class="grid2">
+          <div class="field">
+            <label>Professor (modo manual)</label>
+            <input id="a-prof-txt" placeholder="Ex: Prof. Maria" />
+          </div>
+          <div class="field">
+            <label>Auxiliar (modo manual)</label>
+            <input id="a-aux-txt" placeholder="Ex: Tia Ana" />
+          </div>
         </div>
-        <div id="aula-msg" class="muted" style="margin-top:10px;"></div>
+
+        <div style="height:12px;"></div>
+
+        <div class="field">
+          <label>Tema</label>
+          <input id="a-tema" placeholder="Ex: O Bom Pastor" />
+        </div>
+
+        <div style="height:14px;"></div>
+
+        <div class="toolbar">
+          <button class="btn btn-primary" id="a-start">Iniciar aula</button>
+          <button class="btn btn-outline" id="a-go-ativa">Ir para Aula ativa</button>
+        </div>
+
+        <div class="hint" id="a-msg"></div>
       </div>
     `;
 
-    $("#btn-ir-ativa").onclick = () => goto("ativa");
+    $("#a-check").onclick = () => goto("ativa");
+    $("#a-go-ativa").onclick = () => goto("ativa");
 
-    $("#btn-iniciar-aula").onclick = async () => {
-      const prof = ($("#a-prof").value || "").trim();
-      const aux = ($("#a-aux").value || "").trim();
+    // tenta carregar usuários (admin)
+    await loadUsuariosAdmin();
+    fillProfessorAuxSelects();
+
+    $("#a-start").onclick = async () => {
       const tema = ($("#a-tema").value || "").trim();
-      const msg = $("#aula-msg");
+      const msg = $("#a-msg");
       msg.textContent = "";
 
-      if (!prof || !tema) {
-        msg.textContent = "Tema e professor são obrigatórios.";
+      if (!tema) { msg.textContent = "Tema é obrigatório."; return; }
+
+      // se tiver select (admin)
+      const profId = ($("#a-prof-sel").value || "").trim();
+      const auxId = ($("#a-aux-sel").value || "").trim();
+
+      if (profId) {
+        const r = await API.aulaIniciarPorIds(profId, auxId || null, tema);
+        if (r.ok) {
+          UI.toast("Aula iniciada ✅");
+          goto("ativa");
+        } else {
+          msg.textContent = r.error || "Erro ao iniciar aula.";
+        }
         return;
       }
 
-      const professores = aux ? `${prof} (prof) • ${aux} (aux)` : `${prof}`;
-      const r = await API.aulaIniciar(professores, tema);
+      // modo manual
+      const prof = ($("#a-prof-txt").value || "").trim();
+      const aux = ($("#a-aux-txt").value || "").trim();
+
+      if (!prof) { msg.textContent = "Professor é obrigatório (modo manual)."; return; }
+
+      const professores = aux ? `${prof} (prof) • ${aux} (aux)` : `${prof} (prof)`;
+      const r = await API.aulaIniciarManual(professores, tema);
 
       if (r.ok) {
         UI.toast("Aula iniciada ✅");
@@ -527,91 +859,115 @@
     };
   }
 
-  function renderAtiva() {
-    const box = UI.pages.ativa;
+  function fillProfessorAuxSelects() {
+    const profSel = $("#a-prof-sel");
+    const auxSel = $("#a-aux-sel");
+    if (!profSel || !auxSel) return;
 
-    box.innerHTML = `
-      <h2 style="margin:0 0 8px;">Aula ativa</h2>
-      <div class="muted" id="ativa-info">Carregando…</div>
-      <div style="height:14px;"></div>
+    const users = (State.usuarios || []);
+    const profs = users.filter(u => (u.role || "") === "professor" || (u.role || "") === "admin");
+    const auxs = users.filter(u => (u.role || "") === "auxiliar" || (u.role || "") === "admin");
 
-      <div class="row">
-        <div class="card section">
-          <div style="font-weight:900;">Check-in</div>
-          <div class="muted" style="margin:6px 0 10px;">Selecione aluno e marque entrada/saída.</div>
+    profSel.innerHTML = `<option value="">(modo manual)</option>` + profs.map(u =>
+      `<option value="${u.id}">${escapeHtml(u.nome)} • ${escapeHtml(u.role)}</option>`
+    ).join("");
 
-          <label style="font-weight:900;">Aluno</label>
-          <select id="check-aluno" class="input"></select>
+    auxSel.innerHTML = `<option value="">(sem auxiliar)</option>` + auxs.map(u =>
+      `<option value="${u.id}">${escapeHtml(u.nome)} • ${escapeHtml(u.role)}</option>`
+    ).join("");
+  }
 
-          <label style="font-weight:900; margin-top:10px;">Retirado por (opcional)</label>
-          <input id="retirado-por" class="input" placeholder="Ex: Pai / Mãe / Responsável" />
-
-          <div class="actions" style="margin-top:12px;">
-            <button id="btn-entrada" class="btn primary small">Entrada</button>
-            <button id="btn-saida" class="btn small">Saída</button>
-            <button id="btn-encerrar" class="btn danger small">Encerrar aula</button>
-            <button id="btn-refresh-ativa" class="btn small">Atualizar</button>
+  async function renderAtiva() {
+    UI.setHeader("Aula ativa", "Check-in e check-out com segurança");
+    $("#page").innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Informações</div>
+            <div class="card-sub" id="ativa-info">Carregando…</div>
           </div>
-
-          <div id="check-msg" class="muted" style="margin-top:10px;"></div>
+          <div class="toolbar" style="margin:0;">
+            <button class="btn btn-outline" id="ativa-refresh">Atualizar</button>
+            <button class="btn btn-danger" id="ativa-end">Encerrar aula</button>
+          </div>
         </div>
 
-        <div class="card section">
-          <div style="font-weight:900;">Lista de presença</div>
-          <div style="overflow:auto; max-height: 340px; margin-top:10px;">
-            <table>
-              <thead>
-                <tr><th>Aluno</th><th>Entrada</th><th>Saída</th><th>Retirado por</th></tr>
-              </thead>
-              <tbody id="t-presenca"></tbody>
-            </table>
+        <div class="grid2">
+          <div class="card" style="margin:0;">
+            <div class="card-title">Check-in (Entrada)</div>
+            <div class="hint">Selecione aluno e registre entrada.</div>
+
+            <div class="field">
+              <label>Aluno</label>
+              <select id="chk-aluno">
+                <option value="">Carregando…</option>
+              </select>
+            </div>
+
+            <div style="height:12px;"></div>
+            <button class="btn btn-primary" id="btn-entrada">Registrar entrada</button>
+            <div class="hint" id="ent-msg"></div>
           </div>
+
+          <div class="card" style="margin:0;">
+            <div class="card-title">Check-out (Saída)</div>
+            <div class="hint">Somente com responsável cadastrado do aluno.</div>
+
+            <div class="field">
+              <label>Aluno</label>
+              <select id="out-aluno">
+                <option value="">Selecione…</option>
+              </select>
+            </div>
+
+            <div class="field" style="margin-top:10px;">
+              <label>Retirado por</label>
+              <select id="out-resp">
+                <option value="">Selecione o aluno primeiro</option>
+              </select>
+              <div class="small">Se não tiver responsáveis cadastrados, a saída é bloqueada.</div>
+            </div>
+
+            <div style="height:12px;"></div>
+            <button class="btn btn-outline" id="btn-saida">Registrar saída</button>
+            <div class="hint" id="out-msg"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Lista de presença</div>
+            <div class="card-sub">Entrada/saída + retirado por</div>
+          </div>
+          <button class="btn btn-outline" id="btn-relatorio">Baixar relatório (CSV)</button>
+        </div>
+
+        <div style="overflow:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Aluno</th>
+                <th>Entrada</th>
+                <th>Saída</th>
+                <th>Retirado por</th>
+              </tr>
+            </thead>
+            <tbody id="t-presenca"></tbody>
+          </table>
         </div>
       </div>
     `;
 
-    $("#btn-refresh-ativa").onclick = () => loadAulaAtivaPage();
-    $("#btn-entrada").onclick = async () => {
-      const msg = $("#check-msg");
-      msg.textContent = "";
-      if (!State.aulaAtiva) return msg.textContent = "Sem aula ativa.";
+    $("#ativa-refresh").onclick = () => loadAulaAtiva();
+    $("#btn-entrada").onclick = () => doEntrada();
+    $("#btn-saida").onclick = () => doSaida();
 
-      const alunoId = $("#check-aluno").value;
-      if (!alunoId) return msg.textContent = "Selecione um aluno.";
-
-      const r = await API.aulaEntrada(State.aulaAtiva.id, alunoId);
-      if (r.ok) {
-        UI.toast("Entrada registrada ✅");
-        await loadAulaAtivaPage();
-      } else {
-        msg.textContent = r.error || "Erro ao registrar entrada.";
-      }
-    };
-
-    $("#btn-saida").onclick = async () => {
-      const msg = $("#check-msg");
-      msg.textContent = "";
-      if (!State.aulaAtiva) return msg.textContent = "Sem aula ativa.";
-
-      const alunoId = $("#check-aluno").value;
-      const retiradoPor = ($("#retirado-por").value || "").trim();
-      if (!alunoId) return msg.textContent = "Selecione um aluno.";
-
-      const r = await API.aulaSaida(State.aulaAtiva.id, alunoId, retiradoPor);
-      if (r.ok) {
-        UI.toast("Saída registrada ✅");
-        $("#retirado-por").value = "";
-        await loadAulaAtivaPage();
-      } else {
-        msg.textContent = r.error || "Erro ao registrar saída.";
-      }
-    };
-
-    $("#btn-encerrar").onclick = async () => {
+    $("#ativa-end").onclick = async () => {
       if (!State.aulaAtiva) return UI.toast("Sem aula ativa.", "err");
       if (!confirm("Encerrar a aula ativa agora?")) return;
-
-      const r = await API.aulaEncerrar(State.aulaAtiva.id);
+      const r = await API.aulaEncerrar();
       if (r.ok) {
         UI.toast("Aula encerrada ✅");
         State.aulaAtiva = null;
@@ -621,202 +977,353 @@
       }
     };
 
-    loadAulaAtivaPage();
+    $("#btn-relatorio").onclick = async () => {
+      if (!State.aulaAtiva) return UI.toast("Sem aula ativa.", "err");
+      const id = State.aulaAtiva.id;
+      const name = `relatorio-aula-${id}.csv`;
+      await downloadFile(`/api/aulas/${id}/relatorio.csv`, name);
+    };
+
+    $("#out-aluno").onchange = async () => {
+      const alunoId = ($("#out-aluno").value || "").trim();
+      await fillResponsaveisSelect(alunoId);
+    };
+
+    await loadAulaAtiva();
   }
 
-  async function loadAulaAtivaPage() {
+  async function loadAulaAtiva() {
     $("#ativa-info").textContent = "Carregando…";
     $("#t-presenca").innerHTML = "";
-    $("#check-aluno").innerHTML = "";
+    $("#ent-msg").textContent = "";
+    $("#out-msg").textContent = "";
 
-    // aula ativa
     const a = await API.aulaAtiva();
     if (!a.ok) {
-      $("#ativa-info").textContent = a.error || "Erro ao carregar aula ativa.";
+      UI.setStatus("Erro", "warn");
+      $("#ativa-info").textContent = a.error || "Erro ao carregar.";
       return;
     }
 
     State.aulaAtiva = a.aula || null;
+
     if (!State.aulaAtiva) {
-      $("#ativa-info").innerHTML = "Nenhuma aula ativa agora. Vá em <b>Aulas</b> para iniciar.";
-      UI.setStatusPill("Sem aula ativa", "warn");
+      UI.setStatus("Sem aula ativa", "warn");
+      $("#ativa-info").innerHTML = `Nenhuma aula ativa agora. Vá em <b>Iniciar aula</b> para começar.`;
+      $("#chk-aluno").innerHTML = `<option value="">—</option>`;
+      $("#out-aluno").innerHTML = `<option value="">—</option>`;
+      $("#out-resp").innerHTML = `<option value="">—</option>`;
+      $("#t-presenca").innerHTML = `<tr><td colspan="4" class="muted">Sem aula ativa.</td></tr>`;
       return;
     }
 
-    UI.setStatusPill("Aula ativa", "ok");
+    UI.setStatus("Aula ativa", "ok");
     $("#ativa-info").innerHTML = `
-      <b>ID:</b> ${State.aulaAtiva.id} <br>
-      <b>Tema:</b> ${escapeHtml(State.aulaAtiva.tema || "-")} <br>
-      <b>Professores:</b> ${escapeHtml(State.aulaAtiva.professores || "-")} <br>
-      <b>Início:</b> ${UI.fmtTS(State.aulaAtiva.data_aula)}
+      <b>ID:</b> ${State.aulaAtiva.id} •
+      <b>Tema:</b> ${escapeHtml(State.aulaAtiva.tema || "-")} •
+      <b>Equipe:</b> ${escapeHtml(State.aulaAtiva.professores || "-")}
     `;
 
-    // alunos
+    // alunos (para selects)
     await loadAlunos();
-    const sel = $("#check-aluno");
-    sel.innerHTML = `<option value="">Selecione…</option>` + (State.alunos||[])
+
+    const alunoOptions = `<option value="">Selecione…</option>` + (State.alunos || [])
       .map(x => `<option value="${x.id}">${escapeHtml(x.nome)}</option>`)
       .join("");
 
+    $("#chk-aluno").innerHTML = alunoOptions;
+    $("#out-aluno").innerHTML = alunoOptions;
+    $("#out-resp").innerHTML = `<option value="">Selecione o aluno primeiro</option>`;
+
     // presença
     const pres = a.presenca || [];
-    const tb = $("#t-presenca");
-    tb.innerHTML = pres.length ? pres.map(p => `
-      <tr>
-        <td>${escapeHtml(p.nome || "")}</td>
-        <td>${UI.fmtTS(p.horario_entrada)}</td>
-        <td>${UI.fmtTS(p.horario_saida)}</td>
-        <td>${escapeHtml(p.retirado_por || "-")}</td>
-      </tr>
-    `).join("") : `<tr><td colspan="4" class="muted">Sem registros ainda.</td></tr>`;
+    $("#t-presenca").innerHTML = pres.length
+      ? pres.map(p => `
+        <tr>
+          <td>${escapeHtml(p.aluno || "")}</td>
+          <td>${fmtTS(p.horario_entrada)}</td>
+          <td>${fmtTS(p.horario_saida)}</td>
+          <td>${escapeHtml(p.retirado_por || "-")}</td>
+        </tr>
+      `).join("")
+      : `<tr><td colspan="4" class="muted">Sem registros ainda.</td></tr>`;
   }
 
-  function renderHistorico() {
-    const box = UI.pages.historico;
+  async function doEntrada() {
+    const msg = $("#ent-msg");
+    msg.textContent = "";
+    if (!State.aulaAtiva) { msg.textContent = "Sem aula ativa."; return; }
 
-    box.innerHTML = `
-      <h2 style="margin:0 0 8px;">Histórico</h2>
-      <div class="muted">Lista de aulas registradas. Se houver aula ativa, você pode entrar nela também.</div>
+    const alunoId = ($("#chk-aluno").value || "").trim();
+    if (!alunoId) { msg.textContent = "Selecione um aluno."; return; }
 
-      <div class="actions" style="margin-top:12px;">
-        <button id="hist-open-ativa" class="btn primary small">Entrar na aula ativa</button>
-        <button id="hist-refresh" class="btn small">Atualizar</button>
-      </div>
-
-      <div style="overflow:auto; margin-top:10px;">
-        <table>
-          <thead>
-            <tr><th>ID</th><th>Data</th><th>Tema</th><th>Professores</th><th>Status</th></tr>
-          </thead>
-          <tbody id="t-historico"></tbody>
-        </table>
-      </div>
-
-      <div id="hist-msg" class="muted" style="margin-top:10px;"></div>
-    `;
-
-    $("#hist-open-ativa").onclick = () => goto("ativa");
-    $("#hist-refresh").onclick = () => loadHistorico();
-
-    loadHistorico();
+    const r = await API.aulaEntrada(State.aulaAtiva.id, alunoId);
+    if (r.ok) {
+      UI.toast("Entrada registrada ✅");
+      await loadAulaAtiva();
+    } else {
+      msg.textContent = r.error || "Erro ao registrar entrada.";
+    }
   }
 
-  async function loadHistorico() {
-    $("#hist-msg").textContent = "";
-    $("#t-historico").innerHTML = `<tr><td colspan="5" class="muted">Carregando…</td></tr>`;
-
-    const r = await API.historico();
-    if (!r.ok) {
-      $("#hist-msg").textContent = r.error || "Erro ao carregar histórico.";
-      $("#t-historico").innerHTML = `<tr><td colspan="5" class="muted">Erro ao carregar.</td></tr>`;
+  async function fillResponsaveisSelect(alunoId) {
+    const sel = $("#out-resp");
+    sel.innerHTML = `<option value="">Carregando…</option>`;
+    if (!alunoId) {
+      sel.innerHTML = `<option value="">Selecione o aluno primeiro</option>`;
       return;
     }
 
-    const rows = (r.aulas || []).map(a => `
-      <tr>
-        <td>${a.id}</td>
-        <td>${UI.fmtTS(a.data_aula)}</td>
-        <td>${escapeHtml(a.tema || "-")}</td>
-        <td>${escapeHtml(a.professores || "-")}</td>
-        <td>${a.encerrada_em ? "Encerrada" : "<b>Ativa</b>"}</td>
-      </tr>
-    `).join("");
+    const r = await API.respList(alunoId);
+    if (!r.ok) {
+      sel.innerHTML = `<option value="">Erro</option>`;
+      $("#out-msg").textContent = r.error || "Erro ao carregar responsáveis.";
+      return;
+    }
 
-    $("#t-historico").innerHTML = rows || `<tr><td colspan="5" class="muted">Nenhuma aula ainda.</td></tr>`;
+    const list = r.responsaveis || [];
+    if (!list.length) {
+      sel.innerHTML = `<option value="">(sem responsáveis cadastrados)</option>`;
+      $("#out-msg").textContent = "Cadastre responsáveis deste aluno na aba Alunos.";
+      return;
+    }
+
+    $("#out-msg").textContent = "";
+    sel.innerHTML = `<option value="">Selecione…</option>` + list.map(x =>
+      `<option value="${escapeHtml(x.nome)}">${escapeHtml(x.nome)}</option>`
+    ).join("");
   }
 
-  function renderMural() {
-    const box = UI.pages.mural;
-    const isAdmin = State.user?.role === "admin";
+  async function doSaida() {
+    const msg = $("#out-msg");
+    msg.textContent = "";
+    if (!State.aulaAtiva) { msg.textContent = "Sem aula ativa."; return; }
 
-    box.innerHTML = `
-      <h2 style="margin:0 0 8px;">Mural</h2>
-      <div class="muted">Avisos rápidos do ministério.</div>
+    const alunoId = ($("#out-aluno").value || "").trim();
+    const resp = ($("#out-resp").value || "").trim();
 
-      <div class="card section" style="margin-top:12px;">
-        <div style="font-weight:900;">Novo aviso</div>
-        <textarea id="aviso-msg" class="input" style="margin-top:10px; height:90px; resize:vertical;" placeholder="Digite o aviso..."></textarea>
-        <div class="actions" style="margin-top:12px;">
-          <button id="btn-add-aviso" class="btn primary small">Publicar</button>
-          <button id="btn-refresh-avisos" class="btn small">Atualizar</button>
+    if (!alunoId) { msg.textContent = "Selecione um aluno."; return; }
+    if (!resp) { msg.textContent = "Selecione o responsável (autorizado)."; return; }
+
+    const r = await API.aulaSaida(State.aulaAtiva.id, alunoId, resp);
+    if (r.ok) {
+      UI.toast("Saída registrada ✅");
+      $("#out-aluno").value = "";
+      $("#out-resp").innerHTML = `<option value="">Selecione o aluno primeiro</option>`;
+      await loadAulaAtiva();
+    } else {
+      msg.textContent = r.error || "Erro ao registrar saída.";
+    }
+  }
+
+  async function renderHistorico() {
+    UI.setHeader("Histórico", "Aulas encerradas e relatórios");
+    $("#page").innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Aulas encerradas</div>
+            <div class="card-sub">Você pode baixar o relatório de qualquer aula.</div>
+          </div>
+          <button class="btn btn-outline" id="h-refresh">Atualizar</button>
         </div>
-        <div class="muted" id="aviso-err" style="margin-top:10px;"></div>
-      </div>
-
-      <div class="card section" style="margin-top:12px;">
-        <div style="font-weight:900;">Avisos</div>
-        <div id="avisos-list" style="margin-top:10px;"></div>
-      </div>
-
-      <div class="muted" style="margin-top:10px;">
-        ${isAdmin ? "Admin pode fixar e excluir avisos." : ""}
+        <div class="hint" id="h-msg"></div>
+        <div style="overflow:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Data</th>
+                <th>Tema</th>
+                <th>Equipe</th>
+                <th>Crianças</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="h-tb"></tbody>
+          </table>
+        </div>
       </div>
     `;
 
-    $("#btn-add-aviso").onclick = async () => {
-      const t = ($("#aviso-msg").value || "").trim();
-      $("#aviso-err").textContent = "";
-      if (!t) return $("#aviso-err").textContent = "Digite uma mensagem.";
+    $("#h-refresh").onclick = () => loadHistorico();
+    await loadHistorico();
+  }
+
+  async function loadHistorico() {
+    $("#h-msg").textContent = "Carregando…";
+    $("#h-tb").innerHTML = "";
+
+    const r = await API.historico();
+    if (!r.ok) {
+      $("#h-msg").textContent = r.error || "Erro ao carregar histórico.";
+      return;
+    }
+
+    const rows = r.historico || [];
+    $("#h-msg").textContent = rows.length ? "" : "Nenhuma aula encerrada ainda.";
+
+    $("#h-tb").innerHTML = rows.map(a => `
+      <tr>
+        <td>${a.id}</td>
+        <td>${fmtTS(a.data_aula)}</td>
+        <td>${escapeHtml(a.tema || "-")}</td>
+        <td>${escapeHtml(a.professores || "-")}</td>
+        <td>${a.total_criancas ?? 0}</td>
+        <td>
+          <button class="btn btn-outline" data-csv="${a.id}">CSV</button>
+          <button class="btn btn-outline" data-ver="${a.id}">Ver</button>
+        </td>
+      </tr>
+    `).join("") || `<tr><td colspan="6" class="muted">Nenhum registro.</td></tr>`;
+
+    $$("[data-csv]").forEach(b => {
+      b.onclick = async () => {
+        const id = b.getAttribute("data-csv");
+        await downloadFile(`/api/aulas/${id}/relatorio.csv`, `relatorio-aula-${id}.csv`);
+      };
+    });
+
+    $$("[data-ver]").forEach(b => {
+      b.onclick = async () => {
+        const id = b.getAttribute("data-ver");
+        const rr = await API.relatorio(id);
+        if (!rr.ok) return UI.toast(rr.error || "Erro", "err");
+
+        const aula = rr.aula || {};
+        const pres = rr.presenca || [];
+
+        UI.modal({
+          title: `Relatório • Aula ${id}`,
+          bodyHtml: `
+            <div class="hint">
+              <b>Tema:</b> ${escapeHtml(aula.tema || "-")}<br/>
+              <b>Equipe:</b> ${escapeHtml(aula.professores || "-")}<br/>
+              <b>Data:</b> ${escapeHtml(aula.data_aula || "-")}
+            </div>
+            <div style="height:10px;"></div>
+            <div style="overflow:auto;">
+              <table>
+                <thead><tr><th>Aluno</th><th>Entrada</th><th>Saída</th><th>Retirado por</th></tr></thead>
+                <tbody>
+                  ${pres.map(p => `
+                    <tr>
+                      <td>${escapeHtml(p.aluno || "")}</td>
+                      <td>${fmtTS(p.horario_entrada)}</td>
+                      <td>${fmtTS(p.horario_saida)}</td>
+                      <td>${escapeHtml(p.retirado_por || "-")}</td>
+                    </tr>
+                  `).join("") || `<tr><td colspan="4" class="muted">Sem presença.</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          `,
+          footerHtml: `
+            <button class="btn btn-outline" data-close>Fechar</button>
+            <button class="btn btn-primary" data-csv>Baixar CSV</button>
+          `
+        }).el.querySelector("[data-csv]").onclick = () => downloadFile(`/api/aulas/${id}/relatorio.csv`, `relatorio-aula-${id}.csv`);
+      };
+    });
+  }
+
+  async function renderMural() {
+    UI.setHeader("Mural", "Avisos do ministério");
+    const isAdmin = State.user?.role === "admin";
+
+    $("#page").innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Novo aviso</div>
+            <div class="card-sub">Mensagens rápidas para a equipe</div>
+          </div>
+          <button class="btn btn-outline" id="m-refresh">Atualizar</button>
+        </div>
+
+        <div class="field">
+          <label>Mensagem</label>
+          <textarea id="m-text" placeholder="Digite o aviso..."></textarea>
+        </div>
+
+        <div style="height:12px;"></div>
+        <button class="btn btn-primary" id="m-add">Publicar</button>
+        <div class="hint" id="m-msg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Avisos</div>
+            <div class="card-sub">${isAdmin ? "Admin pode fixar e excluir." : ""}</div>
+          </div>
+        </div>
+
+        <div class="list" id="m-list"></div>
+      </div>
+    `;
+
+    $("#m-refresh").onclick = () => loadAvisos();
+    $("#m-add").onclick = async () => {
+      const t = ($("#m-text").value || "").trim();
+      $("#m-msg").textContent = "";
+      if (!t) { $("#m-msg").textContent = "Digite uma mensagem."; return; }
 
       const r = await API.avisoCreate(t);
       if (r.ok) {
         UI.toast("Aviso publicado ✅");
-        $("#aviso-msg").value = "";
-        await loadAvisos();
+        $("#m-text").value = "";
+        loadAvisos();
       } else {
-        $("#aviso-err").textContent = r.error || "Erro ao publicar.";
+        $("#m-msg").textContent = r.error || "Erro ao publicar.";
       }
     };
-
-    $("#btn-refresh-avisos").onclick = () => loadAvisos();
 
     loadAvisos();
   }
 
   async function loadAvisos() {
-    const list = $("#avisos-list");
-    list.innerHTML = `<div class="muted">Carregando…</div>`;
+    const box = $("#m-list");
+    box.innerHTML = `<div class="hint">Carregando…</div>`;
 
     const r = await API.avisosList();
     if (!r.ok) {
-      list.innerHTML = `<div class="muted">${escapeHtml(r.error || "Erro ao carregar avisos.")}</div>`;
+      box.innerHTML = `<div class="hint">${escapeHtml(r.error || "Erro ao carregar avisos.")}</div>`;
       return;
     }
 
     const isAdmin = State.user?.role === "admin";
     const avisos = r.avisos || [];
 
-    const html = avisos.map(a => `
-      <div class="card section" style="margin-bottom:10px;">
-        <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+    box.innerHTML = avisos.map(a => `
+      <div class="item" style="align-items:flex-start;">
+        <div class="item-left">
           <div>
-            <div style="font-weight:900;">${a.fixado ? "📌 " : ""}${escapeHtml((a.autor || "Sistema"))}</div>
-            <div class="muted" style="font-size:12px;">${UI.fmtTS(a.data_criacao)}</div>
-          </div>
-          <div class="actions">
-            ${isAdmin ? `<button class="btn small" data-fix="${a.id}" data-fixv="${a.fixado ? "0" : "1"}">${a.fixado ? "Desfixar" : "Fixar"}</button>` : ""}
-            ${isAdmin ? `<button class="btn small" data-adel="${a.id}">Excluir</button>` : ""}
+            <div class="item-title">${a.fixado ? "📌 " : ""}${escapeHtml(a.autor || "Sistema")}</div>
+            <div class="item-sub">${fmtTS(a.data_criacao)}</div>
+            <div style="margin-top:8px;">${escapeHtml(a.mensagem || "")}</div>
           </div>
         </div>
-        <div style="margin-top:10px;">${escapeHtml(a.mensagem || "")}</div>
+        <div class="item-actions">
+          ${isAdmin ? `<button class="btn btn-outline" data-fix="${a.id}" data-v="${a.fixado ? "0" : "1"}">${a.fixado ? "Desfixar" : "Fixar"}</button>` : ""}
+          ${isAdmin ? `<button class="btn btn-danger" data-delav="${a.id}">Excluir</button>` : ""}
+        </div>
       </div>
-    `).join("");
+    `).join("") || `<div class="hint">Nenhum aviso.</div>`;
 
-    list.innerHTML = html || `<div class="muted">Nenhum aviso.</div>`;
-
-    $$("button[data-fix]").forEach(b => {
+    $$("[data-fix]").forEach(b => {
       b.onclick = async () => {
         const id = b.getAttribute("data-fix");
-        const v = b.getAttribute("data-fixv") === "1";
+        const v = b.getAttribute("data-v") === "1";
         const rr = await API.avisoFixar(id, v);
         if (rr.ok) { UI.toast("Atualizado ✅"); loadAvisos(); }
         else UI.toast(rr.error || "Erro", "err");
       };
     });
 
-    $$("button[data-adel]").forEach(b => {
+    $$("[data-delav]").forEach(b => {
       b.onclick = async () => {
-        const id = b.getAttribute("data-adel");
+        const id = b.getAttribute("data-delav");
         if (!confirm("Excluir aviso?")) return;
         const rr = await API.avisoDelete(id);
         if (rr.ok) { UI.toast("Excluído"); loadAvisos(); }
@@ -825,163 +1332,73 @@
     });
   }
 
-  function renderConfig() {
-    const box = UI.pages.config;
-    box.innerHTML = `
-      <h2 style="margin:0 0 8px;">Configurações</h2>
-      <div class="muted">Sessão / conta</div>
-      <div style="height:12px;"></div>
+  async function renderConfig() {
+    UI.setHeader("Config", "Diagnóstico rápido e utilidades");
+    $("#page").innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Diagnóstico</div>
+            <div class="card-sub">Verifique se o servidor está servindo arquivos estáticos</div>
+          </div>
+          <button class="btn btn-outline" id="c-diag">Rodar /api/diag</button>
+        </div>
+        <div class="hint" id="c-out">—</div>
+      </div>
 
-      <div class="card section">
-        <div><b>Usuário:</b> ${escapeHtml(State.user?.usuario || "-")}</div>
-        <div style="margin-top:8px;"><b>Nome:</b> ${escapeHtml(State.user?.nome || "-")}</div>
-        <div style="margin-top:8px;"><b>Role:</b> ${escapeHtml(State.user?.role || "-")}</div>
-
-        <div class="actions" style="margin-top:14px;">
-          <button id="btn-logout2" class="btn danger small">Sair</button>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Dicas</div>
+            <div class="card-sub">Se algo “não atualiza”, pode ser cache do Service Worker.</div>
+          </div>
+        </div>
+        <div class="hint">
+          Se você mexeu em arquivos estáticos (CSS/JS/ícones), incremente a versão do cache no <b>sw.js</b>.<br/>
+          E faça um hard refresh (Ctrl+F5) no PC, ou limpar cache no celular.
         </div>
       </div>
     `;
-    $("#btn-logout2").onclick = logout;
-  }
 
-  // ============ Loaders ============
-  async function loadAlunos() {
-    const r = await API.alunosList();
-    if (r.ok) State.alunos = r.alunos || [];
-    return r;
-  }
-
-  async function loadUsuarios() {
-    // só admin tem acesso, mas professor/aux pode abrir a tela e ver erro,
-    // então a gente trata com fallback visual
-    const r = await API.usuariosList();
-    if (r.ok) State.usuarios = r.usuarios || [];
-    else State.usuarios = [];
-    return r;
-  }
-
-  // ============ Navigation ============
-  function goto(page) {
-    const titles = {
-      home: "Início",
-      alunos: "Alunos",
-      equipe: "Equipe",
-      aulas: "Aulas",
-      ativa: "Aula ativa",
-      historico: "Histórico",
-      mural: "Mural",
-      config: "Config",
+    $("#c-diag").onclick = async () => {
+      $("#c-out").textContent = "Carregando…";
+      try {
+        const res = await fetch("/api/diag");
+        const data = await res.json();
+        if (!data.ok) { $("#c-out").textContent = data.error || "Falhou."; return; }
+        $("#c-out").innerHTML = `
+          <b>Arquivos:</b><br/>
+          <div style="max-height:180px; overflow:auto; margin-top:8px;">
+            ${escapeHtml((data.static_files || []).join("\n"))}
+          </div>
+        `;
+      } catch {
+        $("#c-out").textContent = "Falhou ao chamar /api/diag";
+      }
     };
-
-    UI.setPage(page, titles[page] || "IEQ Central");
-    UI.pageMeta.textContent = "Pronto.";
-
-    switch(page) {
-      case "home": renderHome(); break;
-      case "alunos": renderAlunos(); break;
-      case "equipe": renderEquipe(); break;
-      case "aulas": renderAulas(); break;
-      case "ativa": renderAtiva(); break;
-      case "historico": renderHistorico(); break;
-      case "mural": renderMural(); break;
-      case "config": renderConfig(); break;
-      default: renderHome(); break;
-    }
   }
 
-  // ============ Auth ============
+  // ========= Boot =========
   async function boot() {
-    UI.setLoading(true, "Validando sessão...");
-    UI.pageMeta.textContent = "Validando sessão…";
+    UI.root = document.getElementById("app");
+    if (!UI.root) return;
+
+    if (!API.token) {
+      UI.renderLogin();
+      return;
+    }
 
     const me = await API.me();
     if (!me.ok) {
       API.clearToken();
-      UI.showLogin(me.error || "");
+      UI.renderLogin();
       return;
     }
 
     State.user = me.user;
-    UI.showApp();
-
-    UI.pageMeta.textContent = `Logado como ${State.user.nome} (${State.user.role})`;
+    UI.renderAppShell();
     goto("home");
   }
 
-  async function doLogin() {
-    UI.loginMsg.textContent = "";
-    const usuario = (UI.loginUser.value || "").trim();
-    const senha = (UI.loginPass.value || "").trim();
-
-    if (!usuario || !senha) {
-      UI.loginMsg.textContent = "Informe usuário e senha.";
-      return;
-    }
-
-    UI.btnLogin.disabled = true;
-    UI.btnLogin.textContent = "Entrando...";
-
-    const r = await API.login(usuario, senha);
-
-    UI.btnLogin.disabled = false;
-    UI.btnLogin.textContent = "Entrar";
-
-    if (r.ok && r.token) {
-      API.token = r.token;
-      UI.toast("Bem-vindo ✅");
-      await boot();
-    } else {
-      UI.loginMsg.textContent = r.error || "Login inválido.";
-    }
-  }
-
-  function logout() {
-    API.clearToken();
-    State.user = null;
-    State.aulaAtiva = null;
-    UI.showLogin("");
-  }
-
-  async function refreshAll() {
-    await refreshAulaAtivaHome();
-  }
-
-  // ============ Security helpers ============
-  function escapeHtml(str) {
-    return String(str ?? "").replace(/[&<>"']/g, (m) => ({
-      "&":"&amp;",
-      "<":"&lt;",
-      ">":"&gt;",
-      "\"":"&quot;",
-      "'":"&#039;",
-    }[m]));
-  }
-
-  // ============ Events ============
-  function wireNav() {
-    UI.navButtons.forEach(btn => {
-      btn.addEventListener("click", () => goto(btn.dataset.page));
-    });
-
-    const btnLogout = $("#btn-logout");
-    const btnRefresh = $("#btn-refresh");
-    if (btnLogout) btnLogout.onclick = logout;
-    if (btnRefresh) btnRefresh.onclick = refreshAll;
-
-    UI.btnLogin.onclick = doLogin;
-    UI.loginPass.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") doLogin();
-    });
-    UI.loginUser.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") doLogin();
-    });
-  }
-
-  // ============ Start ============
-  document.addEventListener("DOMContentLoaded", () => {
-    wireNav();
-    boot();
-  });
-
+  boot();
 })();
