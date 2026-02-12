@@ -1,33 +1,29 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kid IEQ 2026 • IEQ Central</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IEQ Central • Kid 2026</title>
 
   <!-- PWA -->
   <link rel="manifest" href="/static/manifest.json" />
   <meta name="theme-color" content="#3b82f6" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-
-  <!-- Ícones -->
-  <link rel="icon" href="/static/images/icon-192.png" />
-  <link rel="apple-touch-icon" href="/static/images/icon-192.png" />
 
   <!-- CSS -->
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
-  <!-- O app.js monta tudo aqui dentro -->
   <div id="app"></div>
 
-  <!-- JS -->
   <script src="/static/js/app.js"></script>
 
   <script>
+    // registra SW se existir
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      });
     }
   </script>
 </body>
