@@ -1,17 +1,17 @@
-const CACHE = "kid-ieq-cache-v6";
+const CACHE = "kid-ieq-cache-v7";
 
 const ASSETS = [
   "/",
-  "/static/app.js",
+  "/static/js/app.js",
   "/static/manifest.json",
-  "/static/icon-72.png",
-  "/static/icon-96.png",
-  "/static/icon-128.png",
-  "/static/icon-144.png",
-  "/static/icon-152.png",
-  "/static/icon-192.png",
-  "/static/icon-384.png",
-  "/static/icon-512.png"
+  "/static/images/icon-72.png",
+  "/static/images/icon-96.png",
+  "/static/images/icon-128.png",
+  "/static/images/icon-144.png",
+  "/static/images/icon-152.png",
+  "/static/images/icon-192.png",
+  "/static/images/icon-384.png",
+  "/static/images/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
