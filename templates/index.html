@@ -105,6 +105,9 @@
         </div>
 
         <div class="topbar-right">
+          <!-- ✅ BOTÃO INSTALAR -->
+          <button id="btn-install" class="btn" style="display:none">Instalar</button>
+
           <button id="btn-refresh" class="btn">Atualizar</button>
         </div>
       </header>
@@ -126,7 +129,7 @@
 
   <script src="/static/js/app.js"></script>
   <script>
-    // Service Worker (PWA)
+    // Service Worker (PWA) - IMPORTANTE: seu sw está em /static/sw.js
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/static/sw.js").catch(() => {});
