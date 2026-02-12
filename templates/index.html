@@ -107,7 +107,6 @@
         <div class="topbar-right">
           <!-- ✅ BOTÃO INSTALAR -->
           <button id="btn-install" class="btn" style="display:none">Instalar</button>
-
           <button id="btn-refresh" class="btn">Atualizar</button>
         </div>
       </header>
@@ -115,17 +114,6 @@
       <main id="page-host" class="content"></main>
     </section>
   </div>
-
-  <script>
-    // Sidebar toggle (visual only)
-    document.addEventListener("DOMContentLoaded", () => {
-      const btn = document.getElementById("btn-burger");
-      const side = document.getElementById("sidebar");
-      if (btn && side) {
-        btn.addEventListener("click", () => side.classList.toggle("collapsed"));
-      }
-    });
-  </script>
 
   <script src="/static/js/app.js"></script>
   <script>
