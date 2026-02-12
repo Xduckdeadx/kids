@@ -31,12 +31,11 @@ DB_CONFIG = {
 def db():
     """
     Suporta:
-    - DATABASE_URL (Railway/Supabase)  -> recomendado
+    - DATABASE_URL (Railway/Supabase) -> recomendado
     - ou variáveis DB_HOST/DB_USER/...
     """
     database_url = _env("DATABASE_URL")
     if database_url:
-        # Importantíssimo: tirar \n e espaços (teu erro do sslmode veio disso)
         return psycopg2.connect(database_url.strip(), cursor_factory=RealDictCursor)
 
     if not DB_CONFIG["host"] or not DB_CONFIG["dbname"] or not DB_CONFIG["user"]:
@@ -86,7 +85,6 @@ def ensure_tables():
         criado_em TIMESTAMP NOT NULL DEFAULT NOW()
     );
     """)
-    # unicidade (id_aluno,nome)
     cur.execute("""
     DO $$
     BEGIN
@@ -123,7 +121,7 @@ def ensure_tables():
     );
     """)
 
-    # Garantir unicidade para ON CONFLICT do front
+    # Unicidade aula+aluno (para ON CONFLICT)
     cur.execute("""
     DO $$
     BEGIN
@@ -161,7 +159,6 @@ def api_error(msg, status=400, exc=None):
     return jsonify(payload), status
 
 def make_token(user):
-    # token simples (não-JWT) para não depender de libs
     data = {
         "id": user["id"],
         "usuario": user["usuario"],
@@ -214,7 +211,6 @@ def require_role(*roles):
 
 @app.get("/")
 def index():
-    # templates/index.html
     return send_from_directory("templates", "index.html")
 
 @app.get("/sw.js")
@@ -273,7 +269,7 @@ def me():
     return jsonify({"ok": True, "user": request.user})
 
 # =========================
-# Estatísticas (orig)
+# Estatísticas
 # =========================
 
 @app.get("/api/estatisticas")
@@ -310,7 +306,6 @@ def estatisticas():
     except Exception as e:
         return api_error("Erro ao carregar estatísticas", 500, e)
 
-# ✅ Alias que seu front pede
 @app.get("/api/stats")
 @require_auth
 def stats_alias():
@@ -371,7 +366,7 @@ def alunos_delete(aluno_id):
         return api_error("Erro ao excluir aluno", 500, e)
 
 # =========================
-# Responsáveis (autorizados a retirar)
+# Responsáveis
 # =========================
 
 @app.get("/api/alunos/<int:aluno_id>/responsaveis")
@@ -437,7 +432,7 @@ def responsaveis_delete(aluno_id, resp_id):
         return api_error("Erro ao excluir responsável", 500, e)
 
 # =========================
-# Equipe (orig) + Alias /usuarios (front)
+# Equipe (admin)
 # =========================
 
 @app.get("/api/equipe")
@@ -643,7 +638,6 @@ def aula_iniciar():
         if not tema:
             return api_error("Tema é obrigatório", 400)
 
-        # Novo modo: escolher professor/auxiliar cadastrados
         if (professor_id is not None) or (auxiliar_id is not None):
             try:
                 professor_id = int(professor_id) if professor_id is not None else None
@@ -657,7 +651,6 @@ def aula_iniciar():
         conn = db()
         cur = conn.cursor()
 
-        # Se vierem IDs, monta o texto "professores" a partir do cadastro
         if professor_id is not None or auxiliar_id is not None:
             names = []
             if professor_id is not None:
@@ -676,9 +669,7 @@ def aula_iniciar():
                 names.append(f"{a['nome']} (aux)")
             professores = " • ".join(names)
 
-        # Fecha alguma ativa (se existir) para não ficar duas abertas
         cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL")
-
         cur.execute(
             "INSERT INTO aulas (tema, professores) VALUES (%s,%s) RETURNING id",
             (tema, professores),
@@ -750,7 +741,6 @@ def aula_saida():
         if not frequencia_id and (not aula_id or not aluno_id):
             return api_error("Envie frequencia_id OU aula_id + aluno_id", 400)
 
-        # Segurança: só permite saída com responsável cadastrado
         if not retirado_por:
             return api_error("Informe quem retirou (responsável).", 400)
 
@@ -764,7 +754,6 @@ def aula_saida():
                 return api_error("Registro de frequência não encontrado", 404)
             aluno_id = fr["id_aluno"]
 
-        # precisa ter lista de responsáveis
         cur.execute("SELECT 1 FROM responsaveis WHERE id_aluno=%s LIMIT 1", (aluno_id,))
         has_resp = cur.fetchone() is not None
         if not has_resp:
@@ -808,10 +797,6 @@ def aula_saida():
     except Exception as e:
         return api_error("Erro ao registrar saída", 500, e)
 
-# =========================
-# Frequência / Presença
-# =========================
-
 @app.get("/api/aulas/<int:aula_id>/frequencia")
 @require_auth
 def aulas_frequencia(aula_id):
@@ -836,7 +821,6 @@ def aulas_frequencia(aula_id):
     except Exception as e:
         return api_error("Erro ao carregar frequência", 500, e)
 
-# ✅ Alias: teu front chama /presenca
 @app.get("/api/aulas/<int:aula_id>/presenca")
 @require_auth
 def aulas_presenca_alias(aula_id):
@@ -844,7 +828,6 @@ def aulas_presenca_alias(aula_id):
     data = resp[0].get_json()
     return jsonify({"ok": True, "presenca": data.get("frequencia", [])})
 
-# ✅ Relatório simples (teu front chama /relatorio)
 @app.get("/api/aulas/<int:aula_id>/relatorio")
 @require_auth
 def aulas_relatorio(aula_id):
@@ -920,10 +903,6 @@ def aulas_relatorio_csv(aula_id):
     except Exception as e:
         return api_error("Erro ao gerar CSV", 500, e)
 
-# =========================
-# Histórico
-# =========================
-
 @app.get("/api/historico")
 @require_auth
 def historico_listar():
@@ -949,11 +928,260 @@ def historico_listar():
     except Exception as e:
         return api_error("Erro ao listar histórico", 500, e)
 
-# ✅ Alias que teu front chama
 @app.get("/api/aulas/historico")
 @require_auth
 def historico_alias():
     return historico_listar()
+
+# =========================
+# ✅ Assistente IEQ (sem escala)
+# =========================
+
+def _assist_tema_catalogo():
+    # catálogo fixo (pode expandir depois)
+    return [
+        {"tema": "O Bom Pastor", "verso": "João 10:11", "ideia": "Dinâmica: ovelha e pastor, cuidado e direção."},
+        {"tema": "A Arca de Noé", "verso": "Gênesis 6–9", "ideia": "Atividade: montar arca de papel e falar de obediência."},
+        {"tema": "Davi e Golias", "verso": "1 Samuel 17", "ideia": "Lição: coragem com Deus, não com força."},
+        {"tema": "O Filho Pródigo", "verso": "Lucas 15:11-32", "ideia": "Enfatizar perdão e volta pra casa."},
+        {"tema": "A Multiplicação dos Pães", "verso": "Mateus 14:13-21", "ideia": "Compartilhar e confiar na provisão."},
+        {"tema": "Fruto do Espírito", "verso": "Gálatas 5:22-23", "ideia": "Cartões com cada fruto e exemplos do dia a dia."},
+        {"tema": "A Armadura de Deus", "verso": "Efésios 6:10-18", "ideia": "Crianças desenham armadura e entendem proteção."},
+        {"tema": "Jesus Acalma a Tempestade", "verso": "Marcos 4:35-41", "ideia": "Fé no meio do medo."},
+        {"tema": "Zaqueu", "verso": "Lucas 19:1-10", "ideia": "Transformação e escolha certa."},
+        {"tema": "A Criação", "verso": "Gênesis 1", "ideia": "Deus criou tudo com propósito."},
+        {"tema": "Daniel na Cova dos Leões", "verso": "Daniel 6", "ideia": "Fidelidade mesmo sob pressão."},
+        {"tema": "Oração", "verso": "Mateus 6:9-13", "ideia": "Ensinar oração com exemplos simples."},
+    ]
+
+@app.get("/api/assistente/sugestao-tema")
+@require_auth
+def assist_sugestao_tema():
+    try:
+        janela = int(request.args.get("janela", "8"))  # últimos N temas a evitar
+        janela = max(1, min(janela, 50))
+
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("SELECT tema FROM aulas ORDER BY iniciada_em DESC LIMIT %s", (janela,))
+        recentes = [r["tema"] for r in (cur.fetchall() or [])]
+        cur.close()
+        conn.close()
+
+        recentes_set = set([t.strip().lower() for t in recentes if t])
+
+        catalogo = _assist_tema_catalogo()
+        # primeiro tema não repetido
+        sugestoes = []
+        for item in catalogo:
+            if item["tema"].strip().lower() not in recentes_set:
+                sugestoes.append(item)
+            if len(sugestoes) >= 3:
+                break
+
+        # se tudo repetiu, devolve 3 primeiros mesmo
+        if not sugestoes:
+            sugestoes = catalogo[:3]
+
+        return jsonify({
+            "ok": True,
+            "evitando_ultimos": recentes[:janela],
+            "sugestoes": sugestoes
+        })
+    except Exception as e:
+        return api_error("Erro ao sugerir tema", 500, e)
+
+@app.get("/api/assistente/insights")
+@require_auth
+def assist_insights():
+    """
+    insights:
+    - alertas de aula ativa: entradas sem saída
+    - frequência baixa nas últimas N aulas encerradas
+    """
+    try:
+        limite_aulas = int(request.args.get("limite_aulas", "10"))
+        limite_aulas = max(1, min(limite_aulas, 60))
+
+        min_pct = float(request.args.get("min_pct", "50"))  # percentual mínimo para não entrar em "baixa"
+        if min_pct < 0: min_pct = 0
+        if min_pct > 100: min_pct = 100
+
+        conn = db()
+        cur = conn.cursor()
+
+        # Aula ativa e alertas
+        cur.execute("SELECT * FROM aulas WHERE encerrada_em IS NULL ORDER BY iniciada_em DESC LIMIT 1")
+        ativa = cur.fetchone()
+
+        alertas = []
+        if ativa:
+            cur.execute(
+                """
+                SELECT a.nome as aluno, f.horario_entrada
+                FROM frequencia f
+                JOIN alunos a ON a.id = f.id_aluno
+                WHERE f.id_aula=%s AND f.horario_entrada IS NOT NULL AND f.horario_saida IS NULL
+                ORDER BY f.horario_entrada ASC
+                """,
+                (ativa["id"],),
+            )
+            pend = cur.fetchall() or []
+            if pend:
+                alertas.append({
+                    "tipo": "SAIDA_PENDENTE",
+                    "titulo": "Alunos com entrada registrada e sem saída",
+                    "qtd": len(pend),
+                    "itens": pend
+                })
+
+        # Frequência baixa nas últimas N aulas encerradas
+        cur.execute(
+            "SELECT id FROM aulas WHERE encerrada_em IS NOT NULL ORDER BY data_aula DESC, id DESC LIMIT %s",
+            (limite_aulas,),
+        )
+        last_ids = [r["id"] for r in (cur.fetchall() or [])]
+        total_ref = len(last_ids)
+
+        baixa = []
+        if total_ref > 0:
+            cur.execute(
+                """
+                WITH last_aulas AS (
+                  SELECT id FROM aulas
+                  WHERE encerrada_em IS NOT NULL
+                  ORDER BY data_aula DESC, id DESC
+                  LIMIT %s
+                )
+                SELECT al.id, al.nome,
+                       COUNT(f.id_aula)::int AS presentes
+                FROM alunos al
+                LEFT JOIN frequencia f
+                  ON f.id_aluno = al.id
+                 AND f.id_aula IN (SELECT id FROM last_aulas)
+                 AND f.horario_entrada IS NOT NULL
+                GROUP BY al.id, al.nome
+                ORDER BY al.nome ASC
+                """,
+                (limite_aulas,),
+            )
+            rows = cur.fetchall() or []
+            for r in rows:
+                presentes = int(r["presentes"] or 0)
+                pct = (presentes / total_ref) * 100.0
+                if pct < min_pct:
+                    baixa.append({
+                        "id": r["id"],
+                        "nome": r["nome"],
+                        "presentes": presentes,
+                        "total_aulas": total_ref,
+                        "pct": round(pct, 1)
+                    })
+
+            # ordena mais críticos primeiro
+            baixa.sort(key=lambda x: (x["pct"], x["nome"].lower()))
+
+        cur.close()
+        conn.close()
+
+        return jsonify({
+            "ok": True,
+            "aula_ativa": ativa,
+            "alertas": alertas,
+            "frequencia_baixa": {
+                "limite_aulas": total_ref,
+                "min_pct": min_pct,
+                "alunos": baixa
+            }
+        })
+    except Exception as e:
+        return api_error("Erro ao gerar insights", 500, e)
+
+@app.get("/api/assistente/relatorio-narrativo")
+@require_auth
+def assist_relatorio_narrativo():
+    """
+    Relatório narrativo (sem IA): texto pronto com base nos dados.
+    """
+    try:
+        aula_id = request.args.get("aula_id")
+        if not aula_id:
+            return api_error("Informe aula_id", 400)
+        aula_id = int(aula_id)
+
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM aulas WHERE id=%s", (aula_id,))
+        aula = cur.fetchone()
+        if not aula:
+            cur.close(); conn.close()
+            return api_error("Aula não encontrada", 404)
+
+        cur.execute(
+            """
+            SELECT a.nome as aluno,
+                   f.horario_entrada, f.horario_saida, COALESCE(f.retirado_por,'') as retirado_por
+            FROM frequencia f
+            JOIN alunos a ON a.id = f.id_aluno
+            WHERE f.id_aula=%s
+            ORDER BY a.nome ASC
+            """,
+            (aula_id,),
+        )
+        presenca = cur.fetchall() or []
+        cur.close()
+        conn.close()
+
+        total = len(presenca)
+        sem_saida = [p for p in presenca if p.get("horario_entrada") and not p.get("horario_saida")]
+        sem_entrada = [p for p in presenca if not p.get("horario_entrada")]
+
+        def _fmt(ts):
+            if not ts: return "-"
+            try:
+                return ts.strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                return str(ts)
+
+        linhas_alunos = []
+        for p in presenca:
+            linhas_alunos.append(
+                f"- {p.get('aluno','')} | entrada: {_fmt(p.get('horario_entrada'))} | saída: {_fmt(p.get('horario_saida'))} | retirado por: {p.get('retirado_por') or '-'}"
+            )
+
+        pendencias = []
+        if sem_saida:
+            pendencias.append(f"• {len(sem_saida)} aluno(s) com entrada registrada e sem saída.")
+        if sem_entrada:
+            pendencias.append(f"• {len(sem_entrada)} aluno(s) sem entrada registrada (verificar lançamento).")
+
+        texto = []
+        texto.append(f"RELATÓRIO DA AULA • IEQ Central (Kid)")
+        texto.append("")
+        texto.append(f"Aula ID: {aula.get('id')} | Data: {aula.get('data_aula')} | Início: {_fmt(aula.get('iniciada_em'))}")
+        texto.append(f"Tema: {aula.get('tema')}")
+        texto.append(f"Equipe: {aula.get('professores')}")
+        texto.append("")
+        texto.append(f"Total de alunos registrados: {total}")
+        if pendencias:
+            texto.append("")
+            texto.append("Pendências / Alertas:")
+            texto.extend(pendencias)
+        texto.append("")
+        texto.append("Lista de alunos (entrada/saída):")
+        texto.extend(linhas_alunos if linhas_alunos else ["- (sem registros)"])
+        texto.append("")
+        texto.append("Observação: A saída é validada por responsável autorizado conforme cadastro do aluno.")
+
+        return jsonify({
+            "ok": True,
+            "aula": aula,
+            "total": total,
+            "pendencias": pendencias,
+            "texto": "\n".join(texto)
+        })
+    except Exception as e:
+        return api_error("Erro ao gerar relatório narrativo", 500, e)
 
 # =========================
 # Boot
@@ -962,7 +1190,6 @@ def historico_alias():
 try:
     ensure_tables()
 except Exception as e:
-    # não derruba o app em deploy se o DB ainda não está ok (mas loga)
     print("ensure_tables falhou:", str(e))
 
 if __name__ == "__main__":
