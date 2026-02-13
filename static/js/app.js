@@ -42,6 +42,69 @@
   };
 
   // =========================
+  // Sidebar (DESIGN "DE ANTES")
+  // - Desktop: colapsa (ícones)
+  // - Mobile: abre/fecha (off-canvas + overlay)
+  // =========================
+  const Side = {
+    key: "ieq_sidebar_collapsed",
+
+    isMobile() {
+      return window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
+    },
+
+    apply() {
+      const sidebar = $("#sidebar");
+      const overlay = $("#side-overlay");
+      if (!sidebar) return;
+
+      // Mobile: sidebar vira off-canvas, sem "collapsed"
+      if (this.isMobile()) {
+        document.body.classList.remove("side-collapsed");
+        sidebar.classList.remove("collapsed");
+        sidebar.classList.remove("open");
+        if (overlay) overlay.hidden = true;
+        return;
+      }
+
+      // Desktop: usa collapsed
+      const collapsed = localStorage.getItem(this.key) === "1";
+      document.body.classList.toggle("side-collapsed", collapsed);
+      sidebar.classList.toggle("collapsed", collapsed);
+
+      // garante que não fique "open" no desktop
+      sidebar.classList.remove("open");
+      if (overlay) overlay.hidden = true;
+    },
+
+    toggle() {
+      const sidebar = $("#sidebar");
+      const overlay = $("#side-overlay");
+      if (!sidebar) return;
+
+      if (this.isMobile()) {
+        const open = !sidebar.classList.contains("open");
+        sidebar.classList.toggle("open", open);
+        if (overlay) overlay.hidden = !open;
+        return;
+      }
+
+      const next = !(localStorage.getItem(this.key) === "1");
+      localStorage.setItem(this.key, next ? "1" : "0");
+      this.apply();
+    },
+
+    closeMobile() {
+      const sidebar = $("#sidebar");
+      const overlay = $("#side-overlay");
+      if (!sidebar) return;
+      if (!this.isMobile()) return;
+      sidebar.classList.remove("open");
+      if (overlay) overlay.hidden = true;
+    }
+  };
+
+  // =========================
   // Theme
   // =========================
   const Theme = {
@@ -178,7 +241,8 @@
 
   function showApp() {
     if (UI.login) UI.login.style.display = "none";
-    if (UI.app) UI.app.style.display = "block";
+    // ✅ tem que ser GRID (senão quebra o layout da sidebar)
+    if (UI.app) UI.app.style.display = "grid";
   }
 
   function setActiveNav(page) {
@@ -188,6 +252,9 @@
   function goto(page) {
     State.page = page;
     setActiveNav(page);
+
+    // ✅ no celular fecha o menu ao trocar de página
+    Side.closeMobile();
 
     const titles = {
       home: ["Home", "Visão geral e status do sistema"],
@@ -223,6 +290,7 @@
   // =========================
   async function boot() {
     Theme.apply();
+    Side.apply();
 
     if (!API.token) return showLogin("");
 
@@ -234,8 +302,21 @@
     State.user = me.user;
     showApp();
 
-    await preloadAll();
+    // ✅ Carregamento leve primeiro (não trava a tela)
+    await Promise.allSettled([
+      refreshStats(),
+      loadAulaAtiva(),
+      loadAvisosSoft(),
+    ]);
+
     goto("home");
+
+    // ✅ resto carrega em background
+    Promise.allSettled([
+      loadAlunos(),
+      loadUsuariosSoft(),
+      loadHistoricoSoft(),
+    ]);
   }
 
   async function doLogin() {
@@ -261,8 +342,14 @@
     showApp();
     toast("Login realizado ✅", "ok");
 
-    await preloadAll();
+    await Promise.allSettled([
+      refreshStats(),
+      loadAulaAtiva(),
+      loadAvisosSoft(),
+    ]);
+
     goto("home");
+    Promise.allSettled([loadAlunos(), loadUsuariosSoft(), loadHistoricoSoft()]);
   }
 
   function logout() {
@@ -1385,10 +1472,20 @@
 
     UI.btnLogout?.addEventListener("click", logout);
     UI.btnRefresh?.addEventListener("click", async () => {
+      // pode ser completo, mas agora sem travar o layout
       await preloadAll();
       goto(State.page || "home");
       toast("Atualizado.", "ok");
     });
+
+    // ✅ Burger: desktop colapsa / mobile abre
+    $("#btn-burger")?.addEventListener("click", () => Side.toggle());
+
+    // ✅ Overlay fecha no mobile
+    $("#side-overlay")?.addEventListener("click", () => Side.closeMobile());
+
+    // ✅ se redimensionar, aplica modo correto
+    window.addEventListener("resize", () => Side.apply());
   }
 
   // =========================
