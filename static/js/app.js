@@ -41,20 +41,6 @@
     setTimeout(() => el.classList.remove("show"), 2800);
   };
 
-  // garante host das páginas pra evitar tela branca
-  function ensurePageHost() {
-    let host = $("#page-host");
-    if (host) return host;
-
-    // tenta achar um container principal pra injetar
-    const main = document.querySelector(".main") || document.body;
-    host = document.createElement("main");
-    host.id = "page-host";
-    host.className = "content";
-    main.appendChild(host);
-    return host;
-  }
-
   // =========================
   // Theme
   // =========================
@@ -93,7 +79,9 @@
       } catch {
         data = { ok:false, error:"Resposta inválida do servidor." };
       }
-      if (!res.ok && data && data.ok !== true) data.status = res.status;
+      if (!res.ok && data && data.ok !== true) {
+        data.status = res.status;
+      }
       return data;
     },
 
@@ -158,41 +146,24 @@
   };
 
   // =========================
-  // UI refs (re-hidratável)
+  // UI base (espera IDs no HTML)
   // =========================
   const UI = {
-    app: null,
-    login: null,
-    loginUser: null,
-    loginPass: null,
-    btnLogin: null,
-    loginError: null,
+    app: $("#app"),
+    login: $("#login"),
+    loginUser: $("#login-user"),
+    loginPass: $("#login-pass"),
+    btnLogin: $("#btn-login"),
+    loginError: $("#login-error"),
 
-    headerTitle: null,
-    headerMeta: null,
-    btnRefresh: null,
-    btnLogout: null,
+    headerTitle: $("#header-title"),
+    headerMeta: $("#header-meta"),
+    btnRefresh: $("#btn-refresh"),
+    btnLogout: $("#btn-logout"),
 
-    navButtons: [],
-    pageHost: null,
+    navButtons: $$(".nav-btn"),
+    pageHost: $("#page-host"),
   };
-
-  function refreshUI() {
-    UI.app = $("#app");
-    UI.login = $("#login");
-    UI.loginUser = $("#login-user");
-    UI.loginPass = $("#login-pass");
-    UI.btnLogin = $("#btn-login");
-    UI.loginError = $("#login-error");
-
-    UI.headerTitle = $("#header-title");
-    UI.headerMeta = $("#header-meta");
-    UI.btnRefresh = $("#btn-refresh");
-    UI.btnLogout = $("#btn-logout");
-
-    UI.navButtons = $$(".nav-btn");
-    UI.pageHost = ensurePageHost();
-  }
 
   function setHeader(title, meta="") {
     if (UI.headerTitle) UI.headerTitle.textContent = title || "IEQ Central";
@@ -200,14 +171,12 @@
   }
 
   function showLogin(msg="") {
-    refreshUI();
     if (UI.app) UI.app.style.display = "none";
     if (UI.login) UI.login.style.display = "block";
     if (UI.loginError) UI.loginError.textContent = msg || "";
   }
 
   function showApp() {
-    refreshUI();
     if (UI.login) UI.login.style.display = "none";
     if (UI.app) UI.app.style.display = "block";
   }
@@ -217,7 +186,6 @@
   }
 
   function goto(page) {
-    refreshUI();
     State.page = page;
     setActiveNav(page);
 
@@ -236,36 +204,17 @@
     const [t, m] = titles[page] || ["IEQ Central", ""];
     setHeader(t, m);
 
-    try {
-      switch(page) {
-        case "home": return renderHome();
-        case "aulas": return renderIniciarAula();
-        case "ativa": return renderAulaAtiva();
-        case "alunos": return renderAlunos();
-        case "historico": return renderHistorico();
-        case "assistente": return renderAssistente();
-        case "mural": return renderMural();
-        case "equipe": return renderEquipe();
-        case "config": return renderConfig();
-        default: return renderHome();
-      }
-    } catch (err) {
-      console.error(err);
-      if (UI.pageHost) {
-        UI.pageHost.innerHTML = `
-          <div class="card">
-            <div class="card-h">
-              <div class="card-title">Erro</div>
-            </div>
-            <div class="card-b">
-              <div class="err">Algo quebrou ao renderizar a página.</div>
-              <div class="muted">Abra o Console (F12) para ver detalhes.</div>
-              <button class="btn" id="btn-retry">Tentar novamente</button>
-            </div>
-          </div>
-        `;
-        $("#btn-retry")?.addEventListener("click", () => goto(page));
-      }
+    switch(page) {
+      case "home": return renderHome();
+      case "aulas": return renderIniciarAula();
+      case "ativa": return renderAulaAtiva();
+      case "alunos": return renderAlunos();
+      case "historico": return renderHistorico();
+      case "assistente": return renderAssistente();
+      case "mural": return renderMural();
+      case "equipe": return renderEquipe();
+      case "config": return renderConfig();
+      default: return renderHome();
     }
   }
 
@@ -273,7 +222,6 @@
   // Boot / Auth
   // =========================
   async function boot() {
-    refreshUI();
     Theme.apply();
 
     if (!API.token) return showLogin("");
@@ -291,8 +239,6 @@
   }
 
   async function doLogin() {
-    refreshUI();
-
     const usuario = (UI.loginUser?.value || "").trim();
     const senha = (UI.loginPass?.value || "").trim();
 
@@ -301,9 +247,9 @@
       return;
     }
 
-    if (UI.btnLogin) UI.btnLogin.disabled = true;
+    UI.btnLogin.disabled = true;
     const r = await API.login(usuario, senha);
-    if (UI.btnLogin) UI.btnLogin.disabled = false;
+    UI.btnLogin.disabled = false;
 
     if (!r.ok) {
       if (UI.loginError) UI.loginError.textContent = r.error || "Falha no login.";
@@ -432,7 +378,6 @@
     });
   }
 
-  // searchable dropdown (input + list)
   function renderSearchSelect({ id, items, label, placeholder="Digite para buscar...", getLabel, onPick }) {
     return `
       <div class="search-select" data-ss="${id}">
@@ -446,16 +391,12 @@
   }
 
   function wireSearchSelect(rootEl, { items, getLabel, onPick }) {
-    if (!rootEl) return;
     const inputEl = rootEl.querySelector(".ss-input");
     const listEl = rootEl.querySelector(".ss-list");
-    if (!inputEl || !listEl) return;
 
     const renderList = (q="") => {
       const qq = q.trim().toLowerCase();
-      const filtered = !qq
-        ? items.slice(0, 20)
-        : items.filter(it => getLabel(it).toLowerCase().includes(qq)).slice(0, 20);
+      const filtered = !qq ? items.slice(0, 20) : items.filter(it => getLabel(it).toLowerCase().includes(qq)).slice(0, 20);
 
       listEl.innerHTML = filtered.length
         ? filtered.map(it => `<button class="ss-item" data-id="${it.id}">${escapeHtml(getLabel(it))}</button>`).join("")
@@ -480,8 +421,8 @@
   // =========================
   // Pages
   // =========================
+
   async function renderHome() {
-    refreshUI();
     await Promise.allSettled([refreshStats(), loadAvisosSoft(), loadAulaAtiva()]);
 
     const s = State.stats || {};
@@ -559,12 +500,12 @@
       ${card("Avisos fixados", fixadosHtml, `<button class="btn" id="btn-go-mural">Abrir mural</button>`)}
     `;
 
-    $("#btn-home-refresh")?.addEventListener("click", async () => {
+    $("#btn-home-refresh").onclick = async () => {
       await preloadAll();
       renderHome();
       toast("Atualizado.", "ok");
-    });
-    $("#btn-go-mural")?.addEventListener("click", () => goto("mural"));
+    };
+    $("#btn-go-mural").onclick = () => goto("mural");
 
     $$(".shortcut").forEach(el => {
       el.addEventListener("click", () => goto(el.dataset.go));
@@ -572,7 +513,6 @@
   }
 
   async function renderIniciarAula() {
-    refreshUI();
     await loadUsuariosSoft();
 
     const profs = State.usuarios.filter(u => (u.role || "").toLowerCase() === "professor");
@@ -607,48 +547,45 @@
       `)}
     `;
 
-    $("#btn-iniciar")?.addEventListener("click", async () => {
-      const professor_id = Number($("#sel-prof")?.value || 0) || null;
-      const auxiliar_id = Number($("#sel-aux")?.value || 0) || null;
-      const tema = ($("#tema")?.value || "").trim();
+    $("#btn-iniciar").onclick = async () => {
+      const professor_id = Number($("#sel-prof").value || 0) || null;
+      const auxiliar_id = Number($("#sel-aux").value || 0) || null;
+      const tema = ($("#tema").value || "").trim();
       const msg = $("#iniciar-msg");
 
-      if (msg) msg.textContent = "";
-      if (!professor_id) return msg && (msg.textContent = "Selecione um professor.");
-      if (!tema) return msg && (msg.textContent = "Informe o tema.");
+      msg.textContent = "";
+      if (!professor_id) return msg.textContent = "Selecione um professor.";
+      if (!tema) return msg.textContent = "Informe o tema.";
 
       const r = await API.aulaIniciar({ professor_id, auxiliar_id, tema });
       if (!r.ok) {
-        const t = r.error || "Erro ao iniciar aula.";
-        if (msg) msg.textContent = t;
-        toast(t, "err");
+        msg.textContent = r.error || "Erro ao iniciar aula.";
+        toast(msg.textContent, "err");
         return;
       }
       toast("Aula iniciada ✅", "ok");
       await loadAulaAtiva();
       goto("ativa");
-    });
+    };
   }
 
   async function renderAulaAtiva() {
-    refreshUI();
     const host = UI.pageHost;
-
     host.innerHTML = card("Carregando...", `<div class="muted">Buscando aula ativa…</div>`, `<button class="btn" id="btn-ativa-refresh">Atualizar</button>`);
 
-    $("#btn-ativa-refresh")?.addEventListener("click", async () => {
+    $("#btn-ativa-refresh").onclick = async () => {
       await loadAulaAtiva();
       renderAulaAtiva();
-    });
+    };
 
     const r = await loadAulaAtiva();
     if (!r.ok) {
       host.innerHTML = card("Informações", `<div class="err">Erro ao carregar aula ativa: ${escapeHtml(r.error || "—")}</div>`,
         `<button class="btn" id="btn-ativa-refresh2">Atualizar</button>`);
-      $("#btn-ativa-refresh2")?.addEventListener("click", async () => {
+      $("#btn-ativa-refresh2").onclick = async () => {
         await loadAulaAtiva();
         renderAulaAtiva();
-      });
+      };
       return;
     }
 
@@ -658,7 +595,7 @@
     if (!aula) {
       host.innerHTML = card("Aula ativa", `<div class="muted">Nenhuma aula ativa. Inicie uma aula para registrar presença.</div>`,
         `<button class="btn primary" id="btn-go-iniciar">Iniciar aula</button>`);
-      $("#btn-go-iniciar")?.addEventListener("click", () => goto("aulas"));
+      $("#btn-go-iniciar").onclick = () => goto("aulas");
       return;
     }
 
@@ -760,13 +697,13 @@
       ${presHtml}
     `;
 
-    $("#btn-ativa-refresh3")?.addEventListener("click", async () => {
+    $("#btn-ativa-refresh3").onclick = async () => {
       await loadAulaAtiva();
       renderAulaAtiva();
       toast("Atualizado.", "ok");
-    });
+    };
 
-    $("#btn-encerrar")?.addEventListener("click", async () => {
+    $("#btn-encerrar").onclick = async () => {
       if (!confirm("Encerrar a aula ativa?")) return;
       const rr = await API.aulaEncerrar();
       if (!rr.ok) return toast(rr.error || "Erro ao encerrar aula.", "err");
@@ -774,7 +711,7 @@
       await loadAulaAtiva();
       await loadHistoricoSoft();
       renderAulaAtiva();
-    });
+    };
 
     const ssEntrada = host.querySelector('[data-ss="entrada"]');
     wireSearchSelect(ssEntrada, {
@@ -798,59 +735,44 @@
         if (a3) opts.push(a3);
 
         const sel = $("#sel-retirado");
-        if (!sel) return;
-
         sel.innerHTML = opts.length
           ? `<option value="">Selecione...</option>` + opts.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("")
           : `<option value="">Sem responsáveis cadastrados</option>`;
       }
     });
 
-    $("#btn-entrada")?.addEventListener("click", async () => {
+    $("#btn-entrada").onclick = async () => {
       const msg = $("#entrada-msg");
-      if (msg) msg.textContent = "";
-      if (!pickedEntrada) return msg && (msg.textContent = "Selecione um aluno.");
-
+      msg.textContent = "";
+      if (!pickedEntrada) return msg.textContent = "Selecione um aluno.";
       const rr = await API.aulaEntrada({ aula_id: aula.id, aluno_id: pickedEntrada.id });
       if (!rr.ok) return toast(rr.error || "Erro no check-in.", "err");
-
       toast(`Entrada registrada: ${pickedEntrada.nome} ✅`, "ok");
       await loadAulaAtiva();
       renderAulaAtiva();
-    });
+    };
 
-    $("#btn-saida")?.addEventListener("click", async () => {
+    $("#btn-saida").onclick = async () => {
       const msg = $("#saida-msg");
-      if (msg) msg.textContent = "";
-      if (!pickedSaida) return msg && (msg.textContent = "Selecione um aluno.");
-
-      const retirado_por = ($("#sel-retirado")?.value || "").trim();
-      if (!retirado_por) return msg && (msg.textContent = "Selecione o responsável.");
-
+      msg.textContent = "";
+      if (!pickedSaida) return msg.textContent = "Selecione um aluno.";
+      const retirado_por = ($("#sel-retirado").value || "").trim();
+      if (!retirado_por) return msg.textContent = "Selecione o responsável.";
       const rr = await API.aulaSaida({ aula_id: aula.id, aluno_id: pickedSaida.id, retirado_por });
       if (!rr.ok) return toast(rr.error || "Erro no check-out.", "err");
-
       toast(`Saída registrada: ${pickedSaida.nome} ✅`, "ok");
       await loadAulaAtiva();
       renderAulaAtiva();
-    });
+    };
   }
 
   async function renderAlunos() {
-    refreshUI();
     await loadAlunos();
 
     const list = State.alunos.slice().sort((a,b)=> (a.nome||"").localeCompare(b.nome||"", "pt-BR"));
 
-    const edit = (id) => {
-      State.alunoEditId = id;
-      renderAlunos();
-    };
-
-    const clearEdit = () => {
-      State.alunoEditId = null;
-      renderAlunos();
-    };
+    const edit = (id) => { State.alunoEditId = id; renderAlunos(); };
+    const clearEdit = () => { State.alunoEditId = null; renderAlunos(); };
 
     const alunoEdit = State.alunoEditId ? list.find(a => a.id === State.alunoEditId) : null;
 
@@ -929,22 +851,22 @@
 
     $("#btn-al-cancel")?.addEventListener("click", clearEdit);
 
-    $("#btn-al-save")?.addEventListener("click", async () => {
+    $("#btn-al-save").onclick = async () => {
       const msg = $("#al-msg");
-      if (msg) msg.textContent = "";
+      msg.textContent = "";
 
-      const nome = ($("#al-nome")?.value || "").trim();
-      if (!nome) return msg && (msg.textContent = "Nome é obrigatório.");
+      const nome = ($("#al-nome").value || "").trim();
+      if (!nome) return msg.textContent = "Nome é obrigatório.";
 
       const payload = {
         nome,
-        data_nascimento: ($("#al-nasc")?.value || "").trim(),
-        responsavel: ($("#al-resp")?.value || "").trim(),
-        telefone: ($("#al-tel")?.value || "").trim(),
-        observacoes: ($("#al-obs")?.value || "").trim(),
-        autorizado_retirar: ($("#al-aut1")?.value || "").trim(),
-        autorizado_2: ($("#al-aut2")?.value || "").trim(),
-        autorizado_3: ($("#al-aut3")?.value || "").trim(),
+        data_nascimento: ($("#al-nasc").value || "").trim(),
+        responsavel: ($("#al-resp").value || "").trim(),
+        telefone: ($("#al-tel").value || "").trim(),
+        observacoes: ($("#al-obs").value || "").trim(),
+        autorizado_retirar: ($("#al-aut1").value || "").trim(),
+        autorizado_2: ($("#al-aut2").value || "").trim(),
+        autorizado_3: ($("#al-aut3").value || "").trim(),
       };
 
       const f = $("#al-foto")?.files?.[0];
@@ -963,9 +885,9 @@
       State.alunoEditId = null;
       await loadAlunos();
       renderAlunos();
-    });
+    };
 
-    $("#al-list")?.addEventListener("click", async (e) => {
+    $("#al-list").addEventListener("click", async (e) => {
       const ed = e.target.closest("[data-edit]");
       const del = e.target.closest("[data-del]");
 
@@ -983,10 +905,9 @@
       }
     });
 
-    $("#al-busca")?.addEventListener("input", () => {
+    $("#al-busca").addEventListener("input", () => {
       const q = ($("#al-busca").value || "").trim().toLowerCase();
       const host = $("#al-list");
-      if (!host) return;
       const items = host.querySelectorAll(".item");
       items.forEach(it => {
         const t = it.querySelector(".item-title")?.textContent?.toLowerCase() || "";
@@ -996,7 +917,6 @@
   }
 
   async function renderHistorico() {
-    refreshUI();
     await loadHistoricoSoft();
 
     const h = State.historico || [];
@@ -1020,15 +940,14 @@
       `, `<button class="btn" id="btn-hist-refresh">Atualizar</button>`)}
     `;
 
-    $("#btn-hist-refresh")?.addEventListener("click", async () => {
+    $("#btn-hist-refresh").onclick = async () => {
       await loadHistoricoSoft();
       renderHistorico();
       toast("Atualizado.", "ok");
-    });
+    };
   }
 
   async function renderAssistente() {
-    refreshUI();
     await Promise.allSettled([loadHistoricoSoft(), loadAulaAtiva()]);
 
     UI.pageHost.innerHTML = `
@@ -1080,11 +999,10 @@
       `)}
     `;
 
-    $("#btn-ai-run")?.addEventListener("click", async () => {
-      const limite = Number($("#ai-limite")?.value || 10);
-      const min = Number($("#ai-min")?.value || 50);
+    $("#btn-ai-run").onclick = async () => {
+      const limite = Number($("#ai-limite").value || 10);
+      const min = Number($("#ai-min").value || 50);
       const out = $("#ai-out");
-      if (!out) return;
       out.innerHTML = `<div class="muted">Gerando…</div>`;
 
       const r = await API.assistInsights(limite, min);
@@ -1124,12 +1042,11 @@
           ` : `<div class="muted">Nenhum aluno abaixo do limite.</div>`}
         </div>
       `;
-    });
+    };
 
-    $("#btn-at-run")?.addEventListener("click", async () => {
-      const janela = Number($("#at-janela")?.value || 8);
+    $("#btn-at-run").onclick = async () => {
+      const janela = Number($("#at-janela").value || 8);
       const out = $("#at-out");
-      if (!out) return;
       out.innerHTML = `<div class="muted">Gerando…</div>`;
       const r = await API.assistTema(janela);
       if (!r.ok) {
@@ -1148,44 +1065,41 @@
           `).join("")}
         </div>
       `;
-    });
+    };
 
     let selectedAulaId = null;
 
-    $("#btn-an-ativa")?.addEventListener("click", async () => {
+    $("#btn-an-ativa").onclick = async () => {
       await loadAulaAtiva();
-      const meta = $("#an-ativa-meta");
       if (!State.aulaAtiva) {
-        if (meta) meta.textContent = "Nenhuma aula ativa agora.";
+        $("#an-ativa-meta").textContent = "Nenhuma aula ativa agora.";
         selectedAulaId = null;
         return;
       }
       selectedAulaId = State.aulaAtiva.id;
-      if (meta) meta.textContent = `Aula ativa: ${State.aulaAtiva.id} • ${State.aulaAtiva.tema || ""}`;
+      $("#an-ativa-meta").textContent = `Aula ativa: ${State.aulaAtiva.id} • ${State.aulaAtiva.tema || ""}`;
       toast("Aula ativa selecionada.", "ok");
-    });
+    };
 
-    $("#an-hist")?.addEventListener("change", () => {
-      const v = $("#an-hist")?.value;
+    $("#an-hist").onchange = () => {
+      const v = $("#an-hist").value;
       selectedAulaId = v ? Number(v) : null;
-    });
+    };
 
-    $("#btn-an-run")?.addEventListener("click", async () => {
-      const out = $("#an-text");
+    $("#btn-an-run").onclick = async () => {
       if (!selectedAulaId) return toast("Selecione uma aula ativa ou do histórico.", "err");
-      if (out) out.value = "Gerando…";
+      $("#an-text").value = "Gerando…";
       const r = await API.assistNarrativo(selectedAulaId);
       if (!r.ok) {
-        if (out) out.value = `Erro: ${r.error || "—"}`;
+        $("#an-text").value = `Erro: ${r.error || "—"}`;
         return;
       }
-      if (out) out.value = r.texto || "";
+      $("#an-text").value = r.texto || "";
       toast("Relatório gerado ✅", "ok");
-    });
+    };
   }
 
   async function renderMural() {
-    refreshUI();
     await loadAvisosSoft();
     const avisos = State.avisos || [];
     const isAdmin = (State.user?.role || "").toLowerCase() === "admin";
@@ -1250,14 +1164,14 @@
       `)}
     `;
 
-    $("#btn-av-refresh")?.addEventListener("click", async () => {
+    $("#btn-av-refresh").onclick = async () => {
       await loadAvisosSoft();
       renderMural();
       toast("Atualizado.", "ok");
-    });
+    };
 
-    $("#btn-av-pub")?.addEventListener("click", async () => {
-      const mensagem = ($("#av-msg")?.value || "").trim();
+    $("#btn-av-pub").onclick = async () => {
+      const mensagem = ($("#av-msg").value || "").trim();
       const f = $("#av-img")?.files?.[0];
       let imagem = null;
       if (f) {
@@ -1266,14 +1180,14 @@
       }
       const r = await API.avisoCreate({ mensagem, imagem });
       if (!r.ok) return toast(r.error || "Erro ao publicar aviso.", "err");
-      if ($("#av-msg")) $("#av-msg").value = "";
-      if ($("#av-img")) $("#av-img").value = "";
+      $("#av-msg").value = "";
+      $("#av-img").value = "";
       toast("Aviso publicado ✅", "ok");
       await loadAvisosSoft();
       renderMural();
-    });
+    };
 
-    $("#av-list")?.addEventListener("click", async (e) => {
+    $("#av-list").addEventListener("click", async (e) => {
       const del = e.target.closest("[data-del]");
       const fix = e.target.closest("[data-fixar]");
       const like = e.target.closest("[data-like]");
@@ -1287,7 +1201,6 @@
         toast("Aviso excluído.", "ok");
         await loadAvisosSoft();
         renderMural();
-        return;
       }
 
       if (fix) {
@@ -1298,7 +1211,6 @@
         toast(desired ? "Fixado." : "Desfixado.", "ok");
         await loadAvisosSoft();
         renderMural();
-        return;
       }
 
       if (like) {
@@ -1307,12 +1219,11 @@
         if (!r.ok) return toast(r.error || "Erro no like.", "err");
         await loadAvisosSoft();
         renderMural();
-        return;
       }
 
       if (comBtn) {
         const id = Number(comBtn.dataset.comBtn);
-        const input = $(`[data-com-in="${id}"]`);
+        const input = document.querySelector(`[data-com-in="${id}"]`);
         const comentario = (input?.value || "").trim();
         if (!comentario) return;
         const r = await API.avisoComentar(id, comentario);
@@ -1325,7 +1236,6 @@
   }
 
   async function renderEquipe() {
-    refreshUI();
     await loadUsuariosSoft();
     const isAdmin = (State.user?.role || "").toLowerCase() === "admin";
 
@@ -1376,35 +1286,34 @@
       `)}
     `;
 
-    $("#btn-eq-refresh")?.addEventListener("click", async () => {
+    $("#btn-eq-refresh").onclick = async () => {
       await loadUsuariosSoft();
       renderEquipe();
       toast("Atualizado.", "ok");
-    });
+    };
 
-    $("#btn-eq-add")?.addEventListener("click", async () => {
-      const nome = ($("#eq-nome")?.value || "").trim();
-      const usuario = ($("#eq-user")?.value || "").trim();
-      const senha = ($("#eq-pass")?.value || "").trim();
-      const role = ($("#eq-role")?.value || "auxiliar").trim();
+    $("#btn-eq-add").onclick = async () => {
+      const nome = ($("#eq-nome").value || "").trim();
+      const usuario = ($("#eq-user").value || "").trim();
+      const senha = ($("#eq-pass").value || "").trim();
+      const role = ($("#eq-role").value || "auxiliar").trim();
       const msg = $("#eq-msg");
 
-      if (msg) msg.textContent = "";
-      if (!nome || !usuario || !senha) return msg && (msg.textContent = "Preencha nome, usuário e senha.");
+      msg.textContent = "";
+      if (!nome || !usuario || !senha) return msg.textContent = "Preencha nome, usuário e senha.";
 
       const r = await API.equipeCreate({ nome, usuario, senha, role });
       if (!r.ok) return toast(r.error || "Erro ao cadastrar usuário.", "err");
 
       toast("Usuário cadastrado ✅", "ok");
-      if ($("#eq-nome")) $("#eq-nome").value = "";
-      if ($("#eq-user")) $("#eq-user").value = "";
-      if ($("#eq-pass")) $("#eq-pass").value = "";
-
+      $("#eq-nome").value = "";
+      $("#eq-user").value = "";
+      $("#eq-pass").value = "";
       await loadUsuariosSoft();
       renderEquipe();
-    });
+    };
 
-    $("#eq-list")?.addEventListener("click", async (e) => {
+    $("#eq-list").addEventListener("click", async (e) => {
       const del = e.target.closest("[data-del]");
       if (!del) return;
       const id = Number(del.dataset.del);
@@ -1418,7 +1327,6 @@
   }
 
   async function renderConfig() {
-    refreshUI();
     UI.pageHost.innerHTML = `
       ${card("Preferências", `
         <div class="row between">
@@ -1448,31 +1356,25 @@
 
     Theme.apply();
 
-    $("#btn-theme")?.addEventListener("click", () => {
+    $("#btn-theme").onclick = () => {
       Theme.toggle();
       toast("Tema atualizado.", "ok");
-    });
+    };
 
-    $("#btn-diag")?.addEventListener("click", async () => {
-      const out = $("#dg-out");
-      if (out) out.textContent = "Rodando…";
+    $("#btn-diag").onclick = async () => {
+      $("#dg-out").textContent = "Rodando…";
       const r = await API.request("/api/diag");
-      if (!r.ok) {
-        if (out) out.textContent = "Erro: " + (r.error || "—");
-        return;
-      }
-      if (out) out.textContent = `OK • ${r.static_files?.length || 0} arquivo(s)`;
-    });
+      if (!r.ok) return $("#dg-out").textContent = "Erro: " + (r.error || "—");
+      $("#dg-out").textContent = `OK • ${r.static_files?.length || 0} arquivo(s)`;
+    };
 
-    $("#btn-sair")?.addEventListener("click", logout);
+    $("#btn-sair").onclick = logout;
   }
 
   // =========================
-  // Nav / Events
+  // Events / Nav
   // =========================
   function wireNav() {
-    refreshUI();
-
     UI.navButtons.forEach(btn => {
       btn.addEventListener("click", () => goto(btn.dataset.page));
     });
@@ -1487,71 +1389,62 @@
       goto(State.page || "home");
       toast("Atualizado.", "ok");
     });
-
-    // Sidebar collapse (se existir no HTML)
-    const burger = $("#btn-burger");
-    const sidebar = $("#sidebar");
-    if (burger && sidebar) {
-      burger.addEventListener("click", () => sidebar.classList.toggle("collapsed"));
-    }
-  }
-
-  // ===============================
-  // PWA Install Button (PC + Celular)
-  // ===============================
-  function wirePwaInstall() {
-    let deferredInstallPrompt = null;
-
-    const showInstallBtn = (show) => {
-      const btn = document.getElementById("btn-install");
-      if (!btn) return;
-      btn.style.display = show ? "inline-flex" : "none";
-    };
-
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      deferredInstallPrompt = e;
-      showInstallBtn(true);
-    });
-
-    window.addEventListener("appinstalled", () => {
-      deferredInstallPrompt = null;
-      showInstallBtn(false);
-    });
-
-    document.addEventListener("click", async (ev) => {
-      const btn = ev.target?.closest?.("#btn-install");
-      if (!btn) return;
-
-      if (!deferredInstallPrompt) {
-        alert('Instalação não disponível agora. No navegador, abra o menu e procure "Instalar app".');
-        return;
-      }
-
-      deferredInstallPrompt.prompt();
-      try {
-        await deferredInstallPrompt.userChoice;
-      } finally {
-        deferredInstallPrompt = null;
-        showInstallBtn(false);
-      }
-    });
-
-    const isStandalone =
-      window.matchMedia?.("(display-mode: standalone)")?.matches ||
-      window.navigator?.standalone === true;
-
-    if (isStandalone) showInstallBtn(false);
   }
 
   // =========================
   // Start
   // =========================
   document.addEventListener("DOMContentLoaded", () => {
-    refreshUI();
     wireNav();
-    wirePwaInstall();
     boot();
   });
 
+})();
+
+// ===============================
+// PWA Install Button (PC + Celular)
+// ===============================
+(() => {
+  let deferredInstallPrompt = null;
+
+  const showInstallBtn = (show) => {
+    const btn = document.getElementById("btn-install");
+    if (!btn) return;
+    btn.style.display = show ? "inline-flex" : "none";
+  };
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    showInstallBtn(true);
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    showInstallBtn(false);
+  });
+
+  document.addEventListener("click", async (ev) => {
+    const btn = ev.target?.closest?.("#btn-install");
+    if (!btn) return;
+
+    if (!deferredInstallPrompt) {
+      alert('Instalação não disponível agora. No navegador, abra o menu e procure "Instalar app".');
+      return;
+    }
+
+    deferredInstallPrompt.prompt();
+    try {
+      await deferredInstallPrompt.userChoice;
+    } finally {
+      deferredInstallPrompt = null;
+      showInstallBtn(false);
+    }
+  });
+
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)")?.matches ||
+    window.navigator?.standalone === true;
+
+  if (isStandalone) showInstallBtn(false);
 })();
