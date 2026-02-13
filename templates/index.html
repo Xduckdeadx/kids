@@ -105,7 +105,6 @@
         </div>
 
         <div class="topbar-right">
-          <!-- ✅ BOTÃO INSTALAR -->
           <button id="btn-install" class="btn" style="display:none">Instalar</button>
           <button id="btn-refresh" class="btn">Atualizar</button>
         </div>
@@ -115,9 +114,26 @@
     </section>
   </div>
 
-  <script src="/static/js/app.js"></script>
   <script>
-    // Service Worker (PWA) - IMPORTANTE: seu sw está em /static/sw.js
+    // Sidebar toggle (corrigido: ajusta o grid também)
+    document.addEventListener("DOMContentLoaded", () => {
+      const btn = document.getElementById("btn-burger");
+      const side = document.getElementById("sidebar");
+      const app = document.getElementById("app");
+
+      if (btn && side && app) {
+        btn.addEventListener("click", () => {
+          side.classList.toggle("collapsed");
+          app.classList.toggle("side-collapsed");
+        });
+      }
+    });
+  </script>
+
+  <script src="/static/js/app.js"></script>
+
+  <script>
+    // Service Worker (PWA)
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/static/sw.js").catch(() => {});
