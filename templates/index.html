@@ -58,11 +58,9 @@
   <!-- APP -->
   <div id="app" class="shell" style="display:none">
     <!-- Sidebar -->
-    <aside id="sidebar" class="sidebar">
+    <aside id="sidebar" class="sidebar" aria-label="Menu lateral">
       <div class="side-top">
-        <button id="btn-burger" class="icon-btn" aria-label="Abrir/Fechar menu">
-          ☰
-        </button>
+        <button id="btn-burger" class="icon-btn" aria-label="Abrir/Fechar menu">☰</button>
 
         <div class="side-brand">
           <div class="side-title">IEQ Central</div>
@@ -73,12 +71,12 @@
       <div class="side-user">
         <div class="avatar" aria-hidden="true">A</div>
         <div class="who">
-          <div class="who-name">Administrador</div>
-          <div class="who-role muted">ADMIN</div>
+          <div class="who-name" id="side-user-name">Administrador</div>
+          <div class="who-role muted" id="side-user-role">ADMIN</div>
         </div>
       </div>
 
-      <nav class="nav">
+      <nav class="nav" aria-label="Navegação">
         <button class="nav-btn active" data-page="home">🏠 <span>Home</span></button>
         <button class="nav-btn" data-page="aulas">🎓 <span>Iniciar aula</span></button>
         <button class="nav-btn" data-page="ativa">✅ <span>Aula ativa</span></button>
@@ -96,6 +94,9 @@
       </div>
     </aside>
 
+    <!-- ✅ Overlay (mobile) -->
+    <div id="side-overlay" class="side-overlay" hidden></div>
+
     <!-- Main -->
     <section class="main">
       <header class="topbar">
@@ -104,8 +105,10 @@
           <div class="topbar-sub" id="header-meta">Visão geral e status do sistema</div>
         </div>
 
-        <div class="topbar-right">
+        <div class="topbar-right row">
+          <!-- Botão instalar PWA -->
           <button id="btn-install" class="btn" style="display:none">Instalar</button>
+
           <button id="btn-refresh" class="btn">Atualizar</button>
         </div>
       </header>
@@ -114,26 +117,11 @@
     </section>
   </div>
 
-  <script>
-    // Sidebar toggle (corrigido: ajusta o grid também)
-    document.addEventListener("DOMContentLoaded", () => {
-      const btn = document.getElementById("btn-burger");
-      const side = document.getElementById("sidebar");
-      const app = document.getElementById("app");
-
-      if (btn && side && app) {
-        btn.addEventListener("click", () => {
-          side.classList.toggle("collapsed");
-          app.classList.toggle("side-collapsed");
-        });
-      }
-    });
-  </script>
-
+  <!-- App -->
   <script src="/static/js/app.js"></script>
 
+  <!-- Service Worker -->
   <script>
-    // Service Worker (PWA)
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/static/sw.js").catch(() => {});
