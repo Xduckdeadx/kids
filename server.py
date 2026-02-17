@@ -46,15 +46,15 @@ def get_db_connection():
     )
 
 # =========================
-# INICIALIZAÇÃO
+# INICIALIZAÇÃO DO BANCO - VERSÃO CORRIGIDA
 # =========================
 def init_db():
-    """Cria tabelas se não existirem"""
+    """Cria tabelas se não existirem - com todas as colunas necessárias"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Usuários
+        # 1. TABELA USUÁRIOS
         cur.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id SERIAL PRIMARY KEY,
@@ -63,11 +63,13 @@ def init_db():
             senha TEXT NOT NULL,
             role TEXT DEFAULT 'auxiliar',
             foto TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
+            created_at TIMESTAMP DEFAULT NOW(),
+            last_login TIMESTAMP
         );
         """)
+        logger.info("✅ Tabela usuarios criada/verificada")
         
-        # Alunos
+        # 2. TABELA ALUNOS - com coluna ativo
         cur.execute("""
         CREATE TABLE IF NOT EXISTS alunos (
             id SERIAL PRIMARY KEY,
@@ -80,28 +82,144 @@ def init_db():
             autorizado_2 TEXT,
             autorizado_3 TEXT,
             foto TEXT,
+            imagem_ficha TEXT,
             created_at TIMESTAMP DEFAULT NOW(),
             ativo BOOLEAN DEFAULT TRUE
         );
         """)
+        logger.info("✅ Tabela alunos criada/verificada")
         
-        # Admin padrão
+        # 3. TABELA AVISOS
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS avisos (
+            id SERIAL PRIMARY KEY,
+            mensagem TEXT,
+            data_criacao TIMESTAMP DEFAULT NOW(),
+            autor TEXT,
+            autor_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+            imagem TEXT,
+            fixado BOOLEAN DEFAULT FALSE,
+            curtidas INTEGER DEFAULT 0
+        );
+        """)
+        logger.info("✅ Tabela avisos criada/verificada")
+        
+        # 4. TABELA LIKES
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS avisos_likes (
+            id SERIAL PRIMARY KEY,
+            aviso_id INTEGER REFERENCES avisos(id) ON DELETE CASCADE,
+            usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+            usuario_nome TEXT,
+            criado_em TIMESTAMP DEFAULT NOW(),
+            UNIQUE(aviso_id, usuario_id)
+        );
+        """)
+        logger.info("✅ Tabela likes criada/verificada")
+        
+        # 5. TABELA COMENTÁRIOS
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS avisos_comentarios (
+            id SERIAL PRIMARY KEY,
+            aviso_id INTEGER REFERENCES avisos(id) ON DELETE CASCADE,
+            usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+            usuario_nome TEXT NOT NULL,
+            comentario TEXT NOT NULL,
+            criado_em TIMESTAMP DEFAULT NOW()
+        );
+        """)
+        logger.info("✅ Tabela comentarios criada/verificada")
+        
+        # 6. TABELA AULAS - com todas as colunas necessárias
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS aulas (
+            id SERIAL PRIMARY KEY,
+            data_aula TIMESTAMP DEFAULT NOW(),
+            tema TEXT NOT NULL,
+            professores TEXT,
+            professores_ids TEXT,
+            iniciada_em TIMESTAMP DEFAULT NOW(),
+            encerrada_em TIMESTAMP,
+            observacoes TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+        """)
+        logger.info("✅ Tabela aulas criada/verificada")
+        
+        # 7. TABELA FREQUÊNCIA
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS frequencia (
+            id SERIAL PRIMARY KEY,
+            id_aula INTEGER REFERENCES aulas(id) ON DELETE CASCADE,
+            id_aluno INTEGER REFERENCES alunos(id) ON DELETE CASCADE,
+            entrada_ts TIMESTAMP,
+            saida_ts TIMESTAMP,
+            retirado_por TEXT,
+            retirado_por_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(id_aula, id_aluno)
+        );
+        """)
+        logger.info("✅ Tabela frequencia criada/verificada")
+        
+        # 8. CRIA USUÁRIO ADMIN SE NÃO EXISTIR
         cur.execute("SELECT id FROM usuarios WHERE usuario = 'admin'")
         if not cur.fetchone():
-            cur.execute(
-                "INSERT INTO usuarios (nome, usuario, senha, role) VALUES (%s, %s, %s, %s)",
-                ("Administrador", "admin", "1234", "admin")
-            )
-            logger.info("Admin criado")
+            cur.execute("""
+                INSERT INTO usuarios (nome, usuario, senha, role, created_at)
+                VALUES (%s, %s, %s, %s, NOW())
+            """, ("Administrador", "admin", "1234", "admin"))
+            logger.info("✅ Usuário admin criado (senha: 1234)")
         
         conn.commit()
-        cur.close()
-        conn.close()
-        logger.info("Banco inicializado")
+        logger.info("🎉 Banco de dados inicializado com sucesso!")
+        
+        # Verifica se as colunas existem
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='alunos' AND column_name='ativo'")
+        if not cur.fetchone():
+            logger.error("❌ Coluna 'ativo' não foi criada!")
+        
     except Exception as e:
-        logger.error(f"Erro no banco: {e}")
+        logger.error(f"❌ Erro na inicialização do banco: {e}")
+        logger.error(traceback.format_exc())
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if conn:
+            cur.close()
+            conn.close()
+            logger.info("🔌 Conexão fechada")
 
-init_db()
+# =========================
+# EXECUTA INICIALIZAÇÃO
+# =========================
+try:
+    init_db()
+    logger.info("✅ Banco de dados pronto!")
+except Exception as e:
+    logger.error(f"❌ Falha crítica: {e}")
+
+# =========================
+# UTILITÁRIOS DE RESPOSTA
+# =========================
+def success_response(data=None, message=None, status=200):
+    response = {"success": True, "status": status}
+    if data is not None:
+        response["data"] = data
+    if message:
+        response["message"] = message
+    return jsonify(response), status
+
+def error_response(message, status=400, details=None):
+    response = {
+        "success": False,
+        "error": message,
+        "status": status
+    }
+    if details and os.environ.get("DEBUG"):
+        response["details"] = str(details)
+    return jsonify(response), status
 
 # =========================
 # ROTAS PÚBLICAS
@@ -135,11 +253,10 @@ def status():
         return jsonify({"success": False, "error": str(e)}), 500
 
 # =========================
-# LOGIN - CORRIGIDO
+# LOGIN
 # =========================
 @app.route("/api/login", methods=["POST"])
 def login():
-    """Endpoint de login"""
     try:
         data = request.get_json()
         if not data:
@@ -165,7 +282,6 @@ def login():
         if not user:
             return jsonify({"success": False, "error": "Usuário ou senha inválidos"}), 401
         
-        # Token simples
         token = base64.b64encode(json.dumps({
             "id": user["id"],
             "usuario": user["usuario"],
@@ -196,7 +312,6 @@ def login():
 # =========================
 @app.route("/api/me", methods=["GET"])
 def me():
-    """Retorna dados do usuário atual"""
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         return jsonify({"success": False, "error": "Não autorizado"}), 401
@@ -213,7 +328,6 @@ def me():
 # =========================
 @app.route("/api/dashboard/stats", methods=["GET"])
 def dashboard_stats():
-    """Estatísticas para o dashboard"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -282,8 +396,8 @@ def criar_aluno():
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO alunos (nome, data_nascimento, responsavel, telefone, observacoes,
-                              autorizado_retirar, autorizado_2, autorizado_3, foto)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                              autorizado_retirar, autorizado_2, autorizado_3, foto, ativo)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
             RETURNING *
         """, (
             data.get("nome"), data.get("data_nascimento"), data.get("responsavel"),
@@ -401,8 +515,8 @@ def iniciar_aula():
         cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL")
         
         cur.execute("""
-            INSERT INTO aulas (tema, professores, iniciada_em)
-            VALUES (%s, %s, NOW())
+            INSERT INTO aulas (tema, professores, iniciada_em, data_aula)
+            VALUES (%s, %s, NOW(), NOW())
             RETURNING *
         """, (data.get("tema"), data.get("professores")))
         
@@ -687,7 +801,6 @@ def toggle_like(aviso_id):
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Verifica se já curtiu
         cur.execute(
             "SELECT id FROM avisos_likes WHERE aviso_id = %s AND usuario_id = %s",
             (aviso_id, user_data["id"])
