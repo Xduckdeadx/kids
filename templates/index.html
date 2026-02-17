@@ -1,131 +1,238 @@
-<!doctype html>
-<html lang="pt-BR">
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="theme-color" content="#0b1220" />
-
-  <!-- PWA -->
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-
-  <title>IEQ Central • Kid 2026</title>
-
-  <link rel="manifest" href="/static/manifest.json" />
-  <link rel="icon" href="/static/images/icon-192.png" />
-  <link rel="apple-touch-icon" href="/static/images/icon-192.png" />
-
-  <link rel="stylesheet" href="/static/css/style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#3b82f6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="mobile-web-app-capable" content="yes">
+  
+  <!-- SEO / Social -->
+  <meta name="description" content="Sistema de gerenciamento para Ministério Infantil - IEQ Central">
+  <meta name="keywords" content="igreja, ministério infantil, frequência, alunos, aula">
+  <meta name="author" content="Equipe IEQ Central">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="IEQ Central - Ministério Infantil">
+  <meta property="og:description" content="Sistema profissional para gestão do ministério infantil">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="/static/images/og-image.png">
+  
+  <title>IEQ Central • Ministério Infantil</title>
+  
+  <!-- Manifest PWA -->
+  <link rel="manifest" href="/static/manifest.json">
+  
+  <!-- Ícones -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/images/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/images/favicon-16.png">
+  <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png">
+  
+  <!-- CSS Principal -->
+  <link rel="stylesheet" href="/static/css/style.css">
+  
+  <!-- Fontes (opcional - fallback) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    /* Fallback para garantir que fontes carreguem */
+    body {
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    }
+  </style>
 </head>
 
 <body>
-  <!-- Toast -->
-  <div id="toast" class="toast" aria-live="polite"></div>
+  <!-- Toast Notification Container -->
+  <div id="toast" class="toast" role="alert" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- LOGIN -->
-  <main id="login" class="login" style="display:none">
-    <section class="login-card">
-      <div class="login-brand">
-        <div class="brand-mark" aria-hidden="true">IEQ</div>
-        <div class="brand-text">
-          <div class="brand-title">IEQ Central</div>
-          <div class="brand-sub">Ministério Infantil • Kid 2026</div>
+  <!-- LOGIN PAGE -->
+  <main id="login" class="login-page" style="display: none;">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-logo">
+          <span>⛪</span>
         </div>
+        <h1>IEQ Central</h1>
+        <p>Ministério Infantil • Kid 2026</p>
       </div>
-
+      
       <div class="login-form">
-        <label class="field" for="login-user">
-          <span>Usuário</span>
-          <input id="login-user" type="text" autocomplete="username" placeholder="Seu usuário" />
-        </label>
-
-        <label class="field" for="login-pass">
-          <span>Senha</span>
-          <input id="login-pass" type="password" autocomplete="current-password" placeholder="Sua senha" />
-        </label>
-
-        <button id="btn-login" class="btn primary btn-full">Entrar</button>
-
-        <div id="login-error" class="login-error" role="alert"></div>
-
-        <div class="login-foot">
-          <span class="muted">© IEQ Central • Sistema interno</span>
+        <div class="form-group">
+          <label for="login-user">Usuário</label>
+          <input type="text" id="login-user" name="usuario" 
+                 placeholder="Seu nome de usuário" 
+                 autocomplete="username" 
+                 required>
         </div>
+        
+        <div class="form-group">
+          <label for="login-pass">Senha</label>
+          <input type="password" id="login-pass" name="senha" 
+                 placeholder="Sua senha" 
+                 autocomplete="current-password" 
+                 required>
+        </div>
+        
+        <button id="btn-login" class="btn btn-primary btn-block">
+          <span class="btn-icon">🔐</span>
+          Entrar no Sistema
+        </button>
+        
+        <div id="login-error" class="error" style="display: none;"></div>
       </div>
-    </section>
+      
+      <div class="login-footer">
+        <small>© 2026 IEQ Central • v2.0.0</small>
+        <small>Desenvolvido pela Equipe IEQ Central</small>
+      </div>
+    </div>
   </main>
 
-  <!-- APP -->
-  <div id="app" class="shell" style="display:none">
-    <!-- Sidebar -->
-    <aside id="sidebar" class="sidebar" aria-label="Menu lateral">
-      <div class="side-top">
-        <button id="btn-burger" class="icon-btn" aria-label="Abrir/Fechar menu">☰</button>
-
-        <div class="side-brand">
-          <div class="side-title">IEQ Central</div>
-          <div class="side-sub">Kid 2026</div>
+  <!-- APP SHELL -->
+  <div id="app" class="app-shell" style="display: none;">
+    
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar" aria-label="Menu principal">
+      <div class="sidebar-header">
+        <button id="btn-burger" class="btn-burger" aria-label="Abrir/Fechar menu">
+          <span>☰</span>
+        </button>
+        <div class="sidebar-brand">
+          <h3>IEQ Central</h3>
+          <p>Ministério Infantil</p>
         </div>
       </div>
-
-      <div class="side-user">
-        <div class="avatar" aria-hidden="true">A</div>
-        <div class="who">
-          <div class="who-name" id="side-user-name">Administrador</div>
-          <div class="who-role muted" id="side-user-role">ADMIN</div>
+      
+      <div class="sidebar-user">
+        <div class="user-avatar" id="side-user-avatar">A</div>
+        <div class="user-info">
+          <h4 id="side-user-name">Carregando...</h4>
+          <p id="side-user-role">—</p>
         </div>
       </div>
-
-      <nav class="nav" aria-label="Navegação">
-        <button class="nav-btn active" data-page="home">🏠 <span>Home</span></button>
-        <button class="nav-btn" data-page="aulas">🎓 <span>Iniciar aula</span></button>
-        <button class="nav-btn" data-page="ativa">✅ <span>Aula ativa</span></button>
-        <button class="nav-btn" data-page="alunos">🧒 <span>Alunos</span></button>
-        <button class="nav-btn" data-page="historico">🗂️ <span>Histórico</span></button>
-        <button class="nav-btn" data-page="assistente">🧠 <span>Assistente</span></button>
-        <button class="nav-btn" data-page="mural">📌 <span>Mural</span></button>
-        <button class="nav-btn" data-page="equipe">👥 <span>Equipe</span></button>
-        <button class="nav-btn" data-page="config">⚙️ <span>Config</span></button>
+      
+      <nav class="sidebar-nav" aria-label="Navegação principal">
+        <button class="nav-btn active" data-page="home" aria-label="Dashboard">
+          <span>🏠</span>
+          <span>Dashboard</span>
+        </button>
+        
+        <button class="nav-btn" data-page="aulas" aria-label="Iniciar Aula">
+          <span>🎓</span>
+          <span>Iniciar Aula</span>
+        </button>
+        
+        <button class="nav-btn" data-page="ativa" aria-label="Aula Ativa">
+          <span>✅</span>
+          <span>Aula Ativa</span>
+        </button>
+        
+        <button class="nav-btn" data-page="alunos" aria-label="Alunos">
+          <span>👥</span>
+          <span>Alunos</span>
+        </button>
+        
+        <button class="nav-btn" data-page="historico" aria-label="Histórico">
+          <span>📊</span>
+          <span>Histórico</span>
+        </button>
+        
+        <button class="nav-btn" data-page="mural" aria-label="Mural">
+          <span>📌</span>
+          <span>Mural</span>
+        </button>
+        
+        <button class="nav-btn" data-page="equipe" aria-label="Equipe">
+          <span>👤</span>
+          <span>Equipe</span>
+        </button>
+        
+        <button class="nav-btn" data-page="assistente" aria-label="Assistente">
+          <span>🤖</span>
+          <span>Assistente</span>
+        </button>
+        
+        <button class="nav-btn" data-page="config" aria-label="Configurações">
+          <span>⚙️</span>
+          <span>Config</span>
+        </button>
       </nav>
-
-      <div class="side-foot">
-        <button id="btn-logout" class="btn danger btn-full">Sair</button>
-        <div class="muted small">v1.0 • IEQ Central</div>
+      
+      <div class="sidebar-footer">
+        <small>v2.0.0</small>
+        <small>IEQ Central</small>
       </div>
     </aside>
-
-    <!-- ✅ Overlay (mobile) -->
-    <div id="side-overlay" class="side-overlay" hidden></div>
-
-    <!-- Main -->
-    <section class="main">
+    
+    <!-- Overlay para mobile -->
+    <div id="side-overlay" class="side-overlay" aria-hidden="true"></div>
+    
+    <!-- MAIN CONTENT -->
+    <main class="main">
+      
+      <!-- Topbar -->
       <header class="topbar">
         <div class="topbar-left">
-          <div class="topbar-title" id="header-title">Home</div>
-          <div class="topbar-sub" id="header-meta">Visão geral e status do sistema</div>
+          <h2 id="header-title">Dashboard</h2>
+          <p id="header-meta">Visão geral do sistema</p>
         </div>
-
-        <div class="topbar-right row">
-          <!-- Botão instalar PWA -->
-          <button id="btn-install" class="btn" style="display:none">Instalar</button>
-
-          <button id="btn-refresh" class="btn">Atualizar</button>
+        
+        <div class="topbar-right">
+          <!-- Botão Instalar PWA (visível apenas quando disponível) -->
+          <button id="btn-install" class="btn btn-secondary" style="display: none;" aria-label="Instalar aplicativo">
+            <span class="btn-icon">📲</span>
+            <span class="btn-text">Instalar App</span>
+          </button>
+          
+          <!-- Botão Atualizar -->
+          <button id="btn-refresh" class="btn btn-secondary" aria-label="Atualizar página">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-text">Atualizar</span>
+          </button>
         </div>
       </header>
-
-      <main id="page-host" class="content"></main>
-    </section>
+      
+      <!-- Page Content -->
+      <div id="page-host" class="content" role="main" aria-live="polite">
+        <!-- Conteúdo carregado dinamicamente -->
+        <div class="loading">Carregando...</div>
+      </div>
+      
+    </main>
   </div>
 
-  <!-- App -->
+  <!-- Scripts -->
   <script src="/static/js/app.js"></script>
-
-  <!-- Service Worker -->
+  
+  <!-- Service Worker Registration -->
   <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js')
+          .then(registration => {
+            console.log('Service Worker registrado com sucesso:', registration.scope);
+          })
+          .catch(error => {
+            console.log('Falha ao registrar Service Worker:', error);
+          });
       });
+    }
+    
+    // Detecta se está rodando como PWA instalado
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+      document.getElementById('btn-install').style.display = 'none';
+    }
+  </script>
+  
+  <!-- Debug apenas em desenvolvimento -->
+  <script>
+    // Mostra informações de debug se necessário
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      console.log('IEQ Central - Modo Desenvolvimento');
     }
   </script>
 </body>
