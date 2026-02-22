@@ -1,4 +1,4 @@
-/* Kid IEQ 2025 - app.js (VERSÃO CORRIGIDA) */
+/* Kid IEQ 2025 - app.js (VERSÃO CORRIGIDA E OTIMIZADA) */
 const API = "/api";
 
 /* ---------------- helpers ---------------- */
@@ -487,7 +487,7 @@ const APP = {
     }
   },
 
-  /* ---------------- AULAS (CORRIGIDO) ---------------- */
+  /* ---------------- AULAS ---------------- */
   async loadAulas() {
     const root = document.getElementById("page-aulas");
     if (!root) return;
@@ -655,106 +655,143 @@ const APP = {
     }
   },
 
- async refreshAulaAtivaUI() {
-  const box = $("#aula-ativa-box");
-  const list = $("#lista-presentes");
-  const btnEncerrar = $("#btn-encerrar-aula");
+  async refreshAulaAtivaUI() {
+    const box = $("#aula-ativa-box");
+    const list = $("#lista-presentes");
+    const btnEncerrar = $("#btn-encerrar-aula");
 
-  try {
-    console.log("Buscando aula ativa...");
-    const data = await apiFetch("/aulas/ativa");
-    console.log("Resposta aula ativa:", data);
-    
-    const aula = data?.aula;
+    try {
+      console.log("Buscando aula ativa...");
+      const data = await apiFetch("/aulas/ativa");
+      console.log("Resposta aula ativa:", data);
+      
+      const aula = data?.aula;
 
-    if (!aula) {
-      if (box) box.innerHTML = `<div class="hint">Nenhuma aula ativa no momento.</div>`;
-      if (list) list.innerHTML = `<div class="hint">Inicie uma aula para registrar presença.</div>`;
-      if (btnEncerrar) btnEncerrar.style.display = "none";
-      return;
-    }
-
-    if (box) {
-      box.innerHTML = `
-        <div class="mini-grid">
-          <div><b>Tema:</b> ${esc(aula.tema || "-")}</div>
-          <div><b>Equipe:</b> ${esc(aula.professores || "-")}</div>
-          <div><b>Início:</b> ${fmtDate(aula.data_aula)}</div>
-        </div>
-      `;
-    }
-    if (btnEncerrar) btnEncerrar.style.display = "";
-
-    console.log("Buscando presentes para aula:", aula.id);
-    const pres = await apiFetch(`/aulas/presentes?aula_id=${encodeURIComponent(aula.id)}`);
-    console.log("Resposta presentes:", pres);
-    
-    const presentes = pres?.presentes || [];
-
-    if (list) {
-      if (!presentes.length) {
-        list.innerHTML = `<div class="hint">Ainda ninguém deu entrada.</div>`;
-      } else {
-        list.innerHTML = presentes.map(p => {
-          const saiu = !!p.horario_saida;
-          const entradaTime = p.horario_entrada ? new Date(p.horario_entrada).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "-";
-          const saidaTime = p.horario_saida ? new Date(p.horario_saida).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "";
-          
-          const right = saiu
-            ? `<span class="tag">Saiu ${saidaTime} (${esc(p.retirado_por || "-")})</span>`
-            : `<button class="btn btn-warn btn-sm" data-checkout="${p.frequencia_id}" data-aluno="${p.aluno_id}">Checkout</button>`;
-          
-          return `
-            <div class="item">
-              <div class="item-left">
-                <div class="item-title">${esc(p.nome)}</div>
-                <div class="item-sub">Entrada: ${entradaTime}</div>
-              </div>
-              <div class="item-actions">${right}</div>
-            </div>
-          `;
-        }).join("");
-
-        $$("[data-checkout]", list).forEach(btn => {
-          btn.addEventListener("click", async () => {
-            const fid = Number(btn.getAttribute("data-checkout"));
-            const alunoId = Number(btn.getAttribute("data-aluno"));
-            await this.openCheckoutModal(fid, alunoId);
-          });
-        });
+      if (!aula) {
+        if (box) box.innerHTML = `<div class="hint">Nenhuma aula ativa no momento.</div>`;
+        if (list) list.innerHTML = `<div class="hint">Inicie uma aula para registrar presença.</div>`;
+        if (btnEncerrar) btnEncerrar.style.display = "none";
+        return;
       }
+
+      if (box) {
+        box.innerHTML = `
+          <div class="mini-grid">
+            <div><b>Tema:</b> ${esc(aula.tema || "-")}</div>
+            <div><b>Equipe:</b> ${esc(aula.professores || "-")}</div>
+            <div><b>Início:</b> ${fmtDate(aula.data_aula)}</div>
+          </div>
+        `;
+      }
+      if (btnEncerrar) btnEncerrar.style.display = "";
+
+      console.log("Buscando presentes para aula:", aula.id);
+      const pres = await apiFetch(`/aulas/presentes?aula_id=${encodeURIComponent(aula.id)}`);
+      console.log("Resposta presentes:", pres);
+      
+      const presentes = pres?.presentes || [];
+
+      if (list) {
+        if (!presentes.length) {
+          list.innerHTML = `<div class="hint">Ainda ninguém deu entrada.</div>`;
+        } else {
+          list.innerHTML = presentes.map(p => {
+            const saiu = !!p.horario_saida;
+            const entradaTime = p.horario_entrada ? new Date(p.horario_entrada).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "-";
+            const saidaTime = p.horario_saida ? new Date(p.horario_saida).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "";
+            
+            const right = saiu
+              ? `<span class="tag">Saiu ${saidaTime} (${esc(p.retirado_por || "-")})</span>`
+              : `<button class="btn btn-warn btn-sm" data-checkout="${p.frequencia_id}" data-aluno="${p.aluno_id}">Checkout</button>`;
+            
+            return `
+              <div class="item">
+                <div class="item-left">
+                  <div class="item-title">${esc(p.nome)}</div>
+                  <div class="item-sub">Entrada: ${entradaTime}</div>
+                </div>
+                <div class="item-actions">${right}</div>
+              </div>
+            `;
+          }).join("");
+
+          $$("[data-checkout]", list).forEach(btn => {
+            btn.addEventListener("click", async () => {
+              const fid = Number(btn.getAttribute("data-checkout"));
+              const alunoId = Number(btn.getAttribute("data-aluno"));
+              await this.openCheckoutModal(fid, alunoId);
+            });
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Erro em refreshAulaAtivaUI:", e);
+      if (box) box.innerHTML = `<div class="hint">Falha ao carregar aula ativa: ${esc(e.message)}</div>`;
+      if (list) list.innerHTML = `<div class="hint">${esc(e.message || "Erro")}</div>`;
+      if (btnEncerrar) btnEncerrar.style.display = "none";
     }
-  } catch (e) {
-    console.error("Erro em refreshAulaAtivaUI:", e);
-    if (box) box.innerHTML = `<div class="hint">Falha ao carregar aula ativa: ${esc(e.message)}</div>`;
-    if (list) list.innerHTML = `<div class="hint">${esc(e.message || "Erro")}</div>`;
-    if (btnEncerrar) btnEncerrar.style.display = "none";
-  }
-},
+  },
 
   async openCheckoutModal(frequenciaId, alunoId) {
     try {
-      const alunos = await apiFetch("/alunos").catch(() => []);
-      const aluno = Array.isArray(alunos) ? alunos.find(a => a.id === alunoId) : null;
+      // Tenta buscar o aluno específico primeiro
+      let aluno = null;
       
+      try {
+        // Tenta buscar direto (se tiver o endpoint)
+        const response = await fetch(`${API}/alunos/${alunoId}`, {
+          headers: Auth.headers()
+        });
+        if (response.ok) {
+          aluno = await response.json();
+        }
+      } catch (e) {
+        console.log("Endpoint específico não disponível, buscando todos");
+      }
+      
+      // Se não conseguiu, busca todos
+      if (!aluno) {
+        const alunos = await apiFetch("/alunos").catch(() => []);
+        aluno = Array.isArray(alunos) ? alunos.find(a => a.id === alunoId) : null;
+      }
+      
+      // Fallback se ainda não encontrou
+      if (!aluno) {
+        aluno = {
+          nome: "Aluno",
+          responsavel: "",
+          autorizado_retirar: "",
+          autorizado_2: "",
+          autorizado_3: ""
+        };
+      }
+      
+      // Coleta autorizados
       const auths = [];
-      if (aluno?.responsavel) auths.push(aluno.responsavel);
-      if (aluno?.autorizado_retirar) auths.push(aluno.autorizado_retirar);
-      if (aluno?.autorizado_2) auths.push(aluno.autorizado_2);
-      if (aluno?.autorizado_3) auths.push(aluno.autorizado_3);
+      if (aluno?.responsavel?.trim()) auths.push(aluno.responsavel.trim());
+      if (aluno?.autorizado_retirar?.trim()) auths.push(aluno.autorizado_retirar.trim());
+      if (aluno?.autorizado_2?.trim()) auths.push(aluno.autorizado_2.trim());
+      if (aluno?.autorizado_3?.trim()) auths.push(aluno.autorizado_3.trim());
       
-      const uniq = [...new Set(auths.map(x => String(x || "").trim()).filter(Boolean))];
-      const options = uniq.length ? uniq : ["Responsável (sem nome cadastrado)"];
+      const uniq = [...new Set(auths.filter(Boolean))];
+      
+      if (uniq.length === 0) {
+        uniq.push("Responsável (não cadastrado)");
+      }
 
       Modal.open({
         title: "Checkout de Segurança",
         body: `
           <div class="form">
-            <label>Quem está buscando?</label>
-            <select id="checkout-who" class="form-select">
-              ${options.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}
+            <label>Quem está buscando ${aluno.nome ? esc(aluno.nome) : 'o aluno'}?</label>
+            <select id="checkout-who" class="form-select" required>
+              <option value="">Selecione...</option>
+              ${uniq.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}
             </select>
-            <div class="hint" style="margin-top:8px;">Isso registra horário de saída e o nome de quem retirou.</div>
+            <div class="hint" style="margin-top:8px;">
+              <i class="fa-solid fa-info-circle"></i> 
+              Isso registra horário de saída e o nome de quem retirou.
+            </div>
           </div>
         `,
         footer: `
@@ -764,21 +801,35 @@ const APP = {
       });
 
       $("#btn-confirm-checkout")?.addEventListener("click", async () => {
-        const retirado_por = ($("#checkout-who")?.value || "").trim();
+        const select = $("#checkout-who");
+        const retirado_por = select?.value?.trim();
+        
+        if (!retirado_por) {
+          select.style.borderColor = "var(--danger)";
+          return toast("Selecione quem está buscando", "warn");
+        }
+        
         try {
           await apiFetch("/aulas/saida", {
             method: "POST",
-            body: JSON.stringify({ frequencia_id: frequenciaId, retirado_por })
+            body: JSON.stringify({ 
+              frequencia_id: frequenciaId, 
+              retirado_por 
+            })
           });
+          
           toast("Saída registrada ✅", "ok");
           Modal.close();
           await this.refreshAulaAtivaUI();
         } catch (e) {
+          console.error("Erro no checkout:", e);
           toast(e.message || "Falha no checkout", "err");
         }
       });
+      
     } catch (e) {
-      toast("Falha ao abrir checkout", "err");
+      console.error("Erro ao abrir checkout:", e);
+      toast("Falha ao abrir checkout: " + (e.message || "erro desconhecido"), "err");
     }
   },
 
@@ -1703,7 +1754,7 @@ const APP = {
       toast("Falha ao limpar cache", "err");
     }
   }
-};
+}; // <--- CHAVE DE FECHAMENTO DO OBJETO APP (corrigido!)
 
 window.APP = APP;
 
