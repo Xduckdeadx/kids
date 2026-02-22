@@ -18,7 +18,7 @@ CORS(app)
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "db.phqsoznnrrcjyebzyfht.supabase.co"),
     "database": os.getenv("DB_NAME", "postgres"),
-    "user": os.getenv("DB_USER", "postgres"),
+    "user": os.getenv("DB_USER", "postgres.phqsoznnrrcjyebzyfht"),
     "password": os.getenv("DB_PASS", "Ieqcentral2026*"),
     "port": os.getenv("DB_PORT", "5432"),
     "sslmode": os.getenv("DB_SSLMODE", "require"),
@@ -26,7 +26,7 @@ DB_CONFIG = {
 
 # ---------------- Auth ----------------
 SECRET_KEY = os.getenv("SECRET_KEY", "ieq-central-2026-super-secret")
-TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 14  # 14 dias
+TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 14
 serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 
@@ -84,7 +84,6 @@ def ensure_tables():
     conn = db()
     cur = conn.cursor()
 
-    # usuarios
     cur.execute("""
     CREATE TABLE IF NOT EXISTS usuarios (
         id SERIAL PRIMARY KEY,
@@ -98,12 +97,10 @@ def ensure_tables():
         imagem_ficha TEXT
     )
     """)
-    # garantir colunas em bancos antigos
     cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS telefone TEXT")
     cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email TEXT")
     cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS foto TEXT")
 
-    # alunos
     cur.execute("""
     CREATE TABLE IF NOT EXISTS alunos (
         id SERIAL PRIMARY KEY,
@@ -119,7 +116,6 @@ def ensure_tables():
         imagem_ficha TEXT
     )
     """)
-    # garantir colunas (caso tabela antiga exista)
     cur.execute("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS data_nascimento TEXT")
     cur.execute("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS responsavel TEXT")
     cur.execute("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS telefone TEXT")
@@ -130,7 +126,6 @@ def ensure_tables():
     cur.execute("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS foto TEXT")
     cur.execute("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS imagem_ficha TEXT")
 
-    # avisos (mural)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS avisos (
         id SERIAL PRIMARY KEY,
@@ -142,7 +137,6 @@ def ensure_tables():
         fixado BOOLEAN DEFAULT FALSE
     )
     """)
-    # ✅ MIGRAÇÃO PARA BANCO ANTIGO (resolve seu erro)
     cur.execute("ALTER TABLE avisos ADD COLUMN IF NOT EXISTS autor_id INTEGER")
     cur.execute("ALTER TABLE avisos ADD COLUMN IF NOT EXISTS imagem TEXT")
     cur.execute("ALTER TABLE avisos ADD COLUMN IF NOT EXISTS fixado BOOLEAN DEFAULT FALSE")
@@ -150,7 +144,6 @@ def ensure_tables():
     cur.execute("ALTER TABLE avisos ADD COLUMN IF NOT EXISTS autor TEXT")
     cur.execute("ALTER TABLE avisos ADD COLUMN IF NOT EXISTS mensagem TEXT")
 
-    # likes
     cur.execute("""
     CREATE TABLE IF NOT EXISTS avisos_likes (
         id SERIAL PRIMARY KEY,
@@ -161,7 +154,6 @@ def ensure_tables():
     )
     """)
 
-    # comentarios
     cur.execute("""
     CREATE TABLE IF NOT EXISTS avisos_comentarios (
         id SERIAL PRIMARY KEY,
@@ -173,8 +165,6 @@ def ensure_tables():
     )
     """)
 
-    
-    # aulas
     cur.execute("""
     CREATE TABLE IF NOT EXISTS aulas (
         id SERIAL PRIMARY KEY,
@@ -189,7 +179,6 @@ def ensure_tables():
     cur.execute("ALTER TABLE aulas ADD COLUMN IF NOT EXISTS encerrada_em TIMESTAMP")
     cur.execute("ALTER TABLE aulas ADD COLUMN IF NOT EXISTS data_aula TIMESTAMP")
 
-    # frequencia
     cur.execute("""
     CREATE TABLE IF NOT EXISTS frequencia (
         id SERIAL PRIMARY KEY,
@@ -205,8 +194,6 @@ def ensure_tables():
     cur.execute("ALTER TABLE frequencia ADD COLUMN IF NOT EXISTS horario_saida TIMESTAMP")
     cur.execute("ALTER TABLE frequencia ADD COLUMN IF NOT EXISTS retirado_por TEXT")
 
-
-# seed admin
     cur.execute("SELECT id FROM usuarios WHERE usuario='admin'")
     if not cur.fetchone():
         cur.execute(
@@ -316,9 +303,16 @@ def estatisticas():
         cur.execute("SELECT COUNT(*)::int AS total FROM usuarios")
         total_equipe = cur.fetchone()["total"]
 
+        cur.execute("SELECT COUNT(*)::int AS total FROM avisos")
+        total_avisos = cur.fetchone()["total"]
+
         cur.close()
         conn.close()
-        return jsonify({"total_alunos": total_alunos, "total_equipe": total_equipe})
+        return jsonify({
+            "total_alunos": total_alunos, 
+            "total_equipe": total_equipe,
+            "total_avisos": total_avisos
+        })
     except Exception as e:
         return api_error("Erro ao carregar estatísticas", 500, e)
 
@@ -841,12 +835,10 @@ def comentarios_delete(comentario_id):
         return api_error("Erro ao excluir comentário", 500, e)
 
 
-# ---------------- Aulas (Nova Aula / Aula Ativa / Histórico) ----------------
-
+# ---------------- Aulas ----------------
 @app.get("/api/aulas/ativa")
 @require_auth
 def aulas_ativa():
-    """Retorna a aula ativa (encerrada_em IS NULL) mais recente, ou null."""
     try:
         conn = db()
         cur = conn.cursor()
@@ -864,7 +856,6 @@ def aulas_ativa():
 @app.post("/api/aulas/iniciar")
 @require_auth
 def aulas_iniciar():
-    """Inicia uma aula (encerra qualquer aula ativa anterior) e retorna o id."""
     try:
         body = request.get_json(force=True, silent=True) or {}
         tema = (body.get("tema") or "").strip()
@@ -880,7 +871,6 @@ def aulas_iniciar():
 
         conn = db()
         cur = conn.cursor()
-        # Encerra aula ativa anterior para manter 1 aula ativa no sistema
         cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL")
         cur.execute(
             "INSERT INTO aulas (data_aula, tema, professores) VALUES (NOW(), %s, %s) RETURNING id",
@@ -902,7 +892,6 @@ def aulas_encerrar():
         body = request.get_json(force=True, silent=True) or {}
         aula_id = body.get("aula_id")
         if not aula_id:
-            # encerra a aula ativa se não vier id
             conn = db()
             cur = conn.cursor()
             cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL RETURNING id")
@@ -929,7 +918,6 @@ def aulas_presentes():
     try:
         aula_id = request.args.get("aula_id")
         if not aula_id:
-            # usa aula ativa
             conn = db()
             cur = conn.cursor()
             cur.execute("SELECT id FROM aulas WHERE encerrada_em IS NULL ORDER BY data_aula DESC LIMIT 1")
@@ -965,7 +953,6 @@ def aulas_presentes():
 @app.post("/api/aulas/entrada")
 @require_auth
 def aulas_entrada():
-    """Marca entrada de um aluno na aula."""
     try:
         body = request.get_json(force=True, silent=True) or {}
         aula_id = body.get("aula_id")
@@ -974,7 +961,6 @@ def aulas_entrada():
         if not aluno_id:
             return api_error("aluno_id é obrigatório", 400)
 
-        # se não vier aula_id, pega aula ativa
         if not aula_id:
             conn = db()
             cur = conn.cursor()
@@ -1008,7 +994,6 @@ def aulas_entrada():
 @app.post("/api/aulas/saida")
 @require_auth
 def aulas_saida():
-    """Checkout seguro: marca saída e quem retirou."""
     try:
         body = request.get_json(force=True, silent=True) or {}
         frequencia_id = body.get("frequencia_id")
@@ -1094,4 +1079,3 @@ if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
