@@ -655,71 +655,82 @@ const APP = {
     }
   },
 
-  async refreshAulaAtivaUI() {
-    const box = $("#aula-ativa-box");
-    const list = $("#lista-presentes");
-    const btnEncerrar = $("#btn-encerrar-aula");
+ async refreshAulaAtivaUI() {
+  const box = $("#aula-ativa-box");
+  const list = $("#lista-presentes");
+  const btnEncerrar = $("#btn-encerrar-aula");
 
-    try {
-      const data = await apiFetch("/aulas/ativa");
-      const aula = data?.aula;
+  try {
+    console.log("Buscando aula ativa...");
+    const data = await apiFetch("/aulas/ativa");
+    console.log("Resposta aula ativa:", data);
+    
+    const aula = data?.aula;
 
-      if (!aula) {
-        if (box) box.innerHTML = `<div class="hint">Nenhuma aula ativa no momento.</div>`;
-        if (list) list.innerHTML = `<div class="hint">Inicie uma aula para registrar presença.</div>`;
-        if (btnEncerrar) btnEncerrar.style.display = "none";
-        return;
-      }
-
-      if (box) {
-        box.innerHTML = `
-          <div class="mini-grid">
-            <div><b>Tema:</b> ${esc(aula.tema || "-")}</div>
-            <div><b>Equipe:</b> ${esc(aula.professores || "-")}</div>
-            <div><b>Início:</b> ${fmtDate(aula.data_aula)}</div>
-          </div>
-        `;
-      }
-      if (btnEncerrar) btnEncerrar.style.display = "";
-
-      const pres = await apiFetch(`/aulas/presentes?aula_id=${encodeURIComponent(aula.id)}`);
-      const presentes = pres?.presentes || [];
-
-      if (list) {
-        if (!presentes.length) {
-          list.innerHTML = `<div class="hint">Ainda ninguém deu entrada.</div>`;
-        } else {
-          list.innerHTML = presentes.map(p => {
-            const saiu = !!p.horario_saida;
-            const right = saiu
-              ? `<span class="tag">Saiu ${esc(new Date(p.horario_saida).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}))} (${esc(p.retirado_por || "-")})</span>`
-              : `<button class="btn btn-warn btn-sm" data-checkout="${p.frequencia_id}" data-aluno="${p.aluno_id}">Checkout</button>`;
-            return `
-              <div class="item">
-                <div class="item-left">
-                  <div class="item-title">${esc(p.nome)}</div>
-                  <div class="item-sub">Entrada: ${p.horario_entrada ? esc(new Date(p.horario_entrada).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})) : "-"}</div>
-                </div>
-                <div class="item-actions">${right}</div>
-              </div>
-            `;
-          }).join("");
-
-          $$("[data-checkout]", list).forEach(btn => {
-            btn.addEventListener("click", async () => {
-              const fid = Number(btn.getAttribute("data-checkout"));
-              const alunoId = Number(btn.getAttribute("data-aluno"));
-              await this.openCheckoutModal(fid, alunoId);
-            });
-          });
-        }
-      }
-    } catch (e) {
-      if (box) box.innerHTML = `<div class="hint">Falha ao carregar aula ativa.</div>`;
-      if (list) list.innerHTML = `<div class="hint">${esc(e.message || "Erro")}</div>`;
+    if (!aula) {
+      if (box) box.innerHTML = `<div class="hint">Nenhuma aula ativa no momento.</div>`;
+      if (list) list.innerHTML = `<div class="hint">Inicie uma aula para registrar presença.</div>`;
       if (btnEncerrar) btnEncerrar.style.display = "none";
+      return;
     }
-  },
+
+    if (box) {
+      box.innerHTML = `
+        <div class="mini-grid">
+          <div><b>Tema:</b> ${esc(aula.tema || "-")}</div>
+          <div><b>Equipe:</b> ${esc(aula.professores || "-")}</div>
+          <div><b>Início:</b> ${fmtDate(aula.data_aula)}</div>
+        </div>
+      `;
+    }
+    if (btnEncerrar) btnEncerrar.style.display = "";
+
+    console.log("Buscando presentes para aula:", aula.id);
+    const pres = await apiFetch(`/aulas/presentes?aula_id=${encodeURIComponent(aula.id)}`);
+    console.log("Resposta presentes:", pres);
+    
+    const presentes = pres?.presentes || [];
+
+    if (list) {
+      if (!presentes.length) {
+        list.innerHTML = `<div class="hint">Ainda ninguém deu entrada.</div>`;
+      } else {
+        list.innerHTML = presentes.map(p => {
+          const saiu = !!p.horario_saida;
+          const entradaTime = p.horario_entrada ? new Date(p.horario_entrada).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "-";
+          const saidaTime = p.horario_saida ? new Date(p.horario_saida).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "";
+          
+          const right = saiu
+            ? `<span class="tag">Saiu ${saidaTime} (${esc(p.retirado_por || "-")})</span>`
+            : `<button class="btn btn-warn btn-sm" data-checkout="${p.frequencia_id}" data-aluno="${p.aluno_id}">Checkout</button>`;
+          
+          return `
+            <div class="item">
+              <div class="item-left">
+                <div class="item-title">${esc(p.nome)}</div>
+                <div class="item-sub">Entrada: ${entradaTime}</div>
+              </div>
+              <div class="item-actions">${right}</div>
+            </div>
+          `;
+        }).join("");
+
+        $$("[data-checkout]", list).forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const fid = Number(btn.getAttribute("data-checkout"));
+            const alunoId = Number(btn.getAttribute("data-aluno"));
+            await this.openCheckoutModal(fid, alunoId);
+          });
+        });
+      }
+    }
+  } catch (e) {
+    console.error("Erro em refreshAulaAtivaUI:", e);
+    if (box) box.innerHTML = `<div class="hint">Falha ao carregar aula ativa: ${esc(e.message)}</div>`;
+    if (list) list.innerHTML = `<div class="hint">${esc(e.message || "Erro")}</div>`;
+    if (btnEncerrar) btnEncerrar.style.display = "none";
+  }
+},
 
   async openCheckoutModal(frequenciaId, alunoId) {
     try {
