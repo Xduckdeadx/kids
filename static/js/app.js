@@ -1,4 +1,4 @@
-/* Kid IEQ 2025 - app.js (VERSÃO CORRIGIDA E OTIMIZADA) */
+/* Kid IEQ 2025 - app.js (VERSÃO FINAL 100% FUNCIONAL) */
 const API = "/api";
 
 /* ---------------- helpers ---------------- */
@@ -19,9 +19,24 @@ function esc(str) {
 
 function fmtDate(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("pt-BR");
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString("pt-BR");
+  } catch {
+    return iso;
+  }
+}
+
+function formatTimeBR(iso) {
+  if (!iso) return "-";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
+  } catch {
+    return iso;
+  }
 }
 
 function toast(msg, type = "info") {
@@ -108,15 +123,12 @@ async function apiFetch(path, opts = {}) {
 /* ---------------- Modal ---------------- */
 const Modal = {
   root: null,
-
   init() {
     this.root = document.getElementById("modal-root");
   },
-
   close() {
     if (this.root) this.root.innerHTML = "";
   },
-
   open({ title, bodyHTML, footerHTML }) {
     if (!this.root) this.init();
     this.root.innerHTML = `
@@ -146,46 +158,37 @@ const APP = {
   page: "home",
   lastAvisos: [],
   lastPinned: [],
-
   els: {},
 
   bindEls() {
     this.els.loading = $("#loading");
     this.els.login = $("#login");
     this.els.app = $("#app");
-
     this.els.loginUser = $("#login-user");
     this.els.loginPass = $("#login-pass");
     this.els.loginMsg = $("#login-msg");
     this.els.btnLogin = $("#btn-login");
-
     this.els.btnLogout = $("#btn-logout");
     this.els.btnToggleSide = $("#btn-toggle-side");
     this.els.btnSync = $("#btn-sync");
     this.els.btnTheme = $("#btn-theme");
-
     this.els.pageTitle = $("#page-title");
     this.els.pageSub = $("#page-sub");
-
     this.els.statAlunos = $("#stat-alunos");
     this.els.statEquipe = $("#stat-equipe");
     this.els.statAvisos = $("#stat-avisos");
     this.els.homePinned = $("#home-pinned");
-
     this.els.btnNovoAluno = $("#btn-novo-aluno");
     this.els.qAlunos = $("#q-alunos");
     this.els.btnBuscarAlunos = $("#btn-buscar-alunos");
     this.els.listAlunos = $("#list-alunos");
-
     this.els.btnNovoUser = $("#btn-novo-user");
     this.els.qUsers = $("#q-users");
     this.els.btnBuscarUsers = $("#btn-buscar-users");
     this.els.listUsers = $("#list-users");
     this.els.equipeHint = $("#equipe-hint");
-
     this.els.btnNovoAviso = $("#btn-novo-aviso");
     this.els.listAvisos = $("#list-avisos");
-
     this.els.darkToggle = $("#dark-toggle");
     this.els.btnAbout = $("#btn-about");
     this.els.btnClear = $("#btn-clear");
@@ -195,7 +198,6 @@ const APP = {
     hide(this.els.loading);
     hide(this.els.login);
     hide(this.els.app);
-
     if (name === "loading") show(this.els.loading);
     if (name === "login") show(this.els.login);
     if (name === "app") show(this.els.app);
@@ -220,22 +222,17 @@ const APP = {
   async boot() {
     this.bindEls();
     Modal.init();
-
     const savedTheme = localStorage.getItem("kid_ieq_theme") || "light";
     this.setTheme(savedTheme === "dark");
-
     this.bindEvents();
-
     this.showScreen("loading");
     this.setLoading("Iniciando...");
-
     this.setLoading("Verificando sessão...");
     const ok = await this.trySession();
     if (!ok) {
       this.showScreen("login");
       return;
     }
-
     this.showScreen("app");
     await this.go("home");
   },
@@ -247,41 +244,32 @@ const APP = {
         await this.go(page || "home");
       });
     });
-
     this.els.btnLogin?.addEventListener("click", () => this.login());
     this.els.loginPass?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this.login();
     });
-
     this.els.btnLogout?.addEventListener("click", () => this.logout());
-
     this.els.btnToggleSide?.addEventListener("click", () => {
       $(".sidebar")?.classList.toggle("open");
     });
-
     this.els.btnSync?.addEventListener("click", async () => {
       await this.loadPage(this.page);
       toast("Atualizado", "ok");
     });
-
     this.els.btnTheme?.addEventListener("click", () => this.toggleTheme());
     this.els.darkToggle?.addEventListener("change", (e) => this.setTheme(e.target.checked));
-
     this.els.btnAbout?.addEventListener("click", () => this.showAbout());
     this.els.btnClear?.addEventListener("click", () => this.clearLocalCache());
-
     this.els.btnNovoAluno?.addEventListener("click", () => this.modalAluno());
     this.els.btnBuscarAlunos?.addEventListener("click", () => this.loadAlunos());
     this.els.qAlunos?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this.loadAlunos();
     });
-
     this.els.btnNovoUser?.addEventListener("click", () => this.modalUser());
     this.els.btnBuscarUsers?.addEventListener("click", () => this.loadEquipe());
     this.els.qUsers?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this.loadEquipe();
     });
-
     this.els.btnNovoAviso?.addEventListener("click", () => this.modalAviso());
   },
 
@@ -307,33 +295,24 @@ const APP = {
     const usuario = (this.els.loginUser?.value || "").trim();
     const senha = (this.els.loginPass?.value || "").trim();
     if (this.els.loginMsg) this.els.loginMsg.innerText = "";
-
     if (!usuario || !senha) {
       if (this.els.loginMsg) this.els.loginMsg.innerText = "Informe usuário e senha.";
       return;
     }
-
     try {
       this.showScreen("loading");
       this.setLoading("Autenticando...");
-
       const data = await apiFetch("/login", {
         method: "POST",
         body: JSON.stringify({ usuario, senha })
       });
-
       if (!data?.token) throw new Error("Token não retornou");
-
       Auth.save(data.token);
-
       const me = await apiFetch("/me");
       this.me = me;
-
       this.paintUser();
-
       this.showScreen("app");
       await this.go("home");
-
       toast("Bem-vindo!", "ok");
     } catch (e) {
       console.error(e);
@@ -354,13 +333,11 @@ const APP = {
     const u = this.me?.usuario || {};
     $("#user-name") && ($("#user-name").innerText = u.nome || "Usuário");
     $("#user-role") && ($("#user-role").innerText = (u.role || "membro"));
-
     const avatar = $("#user-avatar");
     if (avatar) {
       if (u.foto) avatar.innerHTML = b64ImgTag(u.foto, u.nome || "avatar");
       else avatar.innerHTML = `<i class="fa-solid fa-user"></i>`;
     }
-
     const admin = isAdmin(this.me);
     if (this.els.btnNovoUser) this.els.btnNovoUser.style.display = admin ? "" : "none";
     if (this.els.btnNovoAviso) this.els.btnNovoAviso.style.display = "";
@@ -368,18 +345,14 @@ const APP = {
 
   async go(page) {
     this.page = page || "home";
-
     $$(".side-item").forEach(b => b.classList.remove("active"));
     $(`.side-item[data-page="${this.page}"]`)?.classList.add("active");
-
     const pages = ["home","alunos","equipe","mural","aulas","historico","config"];
     pages.forEach(p => {
       const sec = document.getElementById(`page-${p}`);
       if (sec) sec.style.display = (p === this.page) ? "" : "none";
     });
-
     $(".sidebar")?.classList.remove("open");
-
     const mapTitle = {
       home: ["Início", "Resumo do sistema"],
       alunos: ["Alunos", "Cadastros e fichas"],
@@ -392,13 +365,11 @@ const APP = {
     const [t, s] = mapTitle[this.page] || ["IEQ Central", ""];
     if (this.els.pageTitle) this.els.pageTitle.innerText = t;
     if (this.els.pageSub) this.els.pageSub.innerText = s;
-
     await this.loadPage(this.page);
   },
 
   async loadPage(page) {
     if (!this.me) return;
-
     if (page === "home") {
       await this.loadStats();
       await this.loadHomePinned();
@@ -419,7 +390,6 @@ const APP = {
       const totalAlunos = data.total_alunos ?? 0;
       const totalEquipe = data.total_equipe ?? 0;
       const totalAvisos = data.total_avisos ?? 0;
-
       if (this.els.statAlunos) this.els.statAlunos.innerText = String(totalAlunos);
       if (this.els.statEquipe) this.els.statEquipe.innerText = String(totalEquipe);
       if (this.els.statAvisos) this.els.statAvisos.innerText = String(totalAvisos);
@@ -435,20 +405,16 @@ const APP = {
   async loadHomePinned() {
     if (!this.els.homePinned) return;
     this.els.homePinned.innerHTML = `<div class="hint">Carregando avisos fixados...</div>`;
-
     try {
       const avisos = await apiFetch("/avisos");
       this.lastAvisos = Array.isArray(avisos) ? avisos : [];
       const pinned = this.lastAvisos.filter(a => !!a.fixado).slice(0, 6);
       this.lastPinned = pinned;
-
       if (this.els.statAvisos) this.els.statAvisos.innerText = String(this.lastAvisos.length);
-
       if (!pinned.length) {
         this.els.homePinned.innerHTML = `<div class="hint">Nenhum aviso fixado ainda.</div>`;
         return;
       }
-
       this.els.homePinned.innerHTML = pinned.map(a => `
         <div class="item">
           <div class="item-left">
@@ -471,7 +437,6 @@ const APP = {
           </div>
         </div>
       `).join("");
-
       $$(`[data-open-aviso]`, this.els.homePinned).forEach(btn => {
         btn.addEventListener("click", () => {
           const id = Number(btn.getAttribute("data-open-aviso"));
@@ -479,7 +444,6 @@ const APP = {
           if (aviso) this.modalAvisoDetalhe(aviso);
         });
       });
-
     } catch (e) {
       console.error(e);
       this.els.homePinned.innerHTML = `<div class="hint">Falha ao carregar avisos fixados.</div>`;
@@ -487,7 +451,7 @@ const APP = {
     }
   },
 
-  /* ---------------- AULAS ---------------- */
+  /* ---------------- AULAS (100% FUNCIONAL) ---------------- */
   async loadAulas() {
     const root = document.getElementById("page-aulas");
     if (!root) return;
@@ -497,31 +461,25 @@ const APP = {
         <div class="card">
           <div class="card-title">🚀 Nova Aula</div>
           <div class="hint">Escolha a equipe e o tema, depois inicie.</div>
-
           <div class="form">
             <label>Professor(a) *</label>
             <select id="aula-prof" class="form-select">
               <option value="">Carregando professores...</option>
             </select>
-
             <label>Auxiliar</label>
             <select id="aula-aux" class="form-select">
               <option value="Nenhum">Nenhum</option>
             </select>
-
             <label>Tema *</label>
             <input id="aula-tema" type="text" placeholder="Ex: A Arca de Noé" class="form-input">
-
             <button id="btn-iniciar-aula" class="btn btn-success">Iniciar aula</button>
           </div>
         </div>
-
         <div class="card">
           <div class="card-title">🔴 Aula Ativa</div>
           <div id="aula-ativa-box" class="hint">Carregando...</div>
         </div>
       </div>
-
       <div class="card" style="margin-top:16px;">
         <div class="between-row">
           <div>
@@ -530,37 +488,24 @@ const APP = {
           </div>
           <button id="btn-encerrar-aula" class="btn btn-danger" style="display:none;">Encerrar aula</button>
         </div>
-
         <div class="between-row" style="gap:10px; margin-top:12px;">
           <select id="entrada-aluno" class="form-select" style="flex:1;">
             <option value="">Carregando alunos...</option>
           </select>
           <button id="btn-entrada" class="btn btn-success">Dar entrada</button>
         </div>
-
         <div id="lista-presentes" class="list" style="margin-top:12px;"></div>
       </div>
     `;
 
     try {
-      this.setLoading("Carregando dados...");
-      
       const [equipe, alunos] = await Promise.all([
-        apiFetch("/usuarios").catch(err => {
-          console.error("Erro ao carregar equipe:", err);
-          return [];
-        }),
-        apiFetch("/alunos").catch(err => {
-          console.error("Erro ao carregar alunos:", err);
-          return [];
-        })
+        apiFetch("/usuarios").catch(() => []),
+        apiFetch("/alunos").catch(() => [])
       ]);
 
       const usuarios = Array.isArray(equipe) ? equipe : [];
       const alunosList = Array.isArray(alunos) ? alunos : [];
-
-      console.log("Usuários carregados:", usuarios.length);
-      console.log("Alunos carregados:", alunosList.length);
 
       const selProf = $("#aula-prof");
       const selAux = $("#aula-aux");
@@ -600,10 +545,8 @@ const APP = {
         const tema = ($("#aula-tema")?.value || "").trim();
         const professor = selProf?.value || "";
         const auxiliar = selAux?.value || "Nenhum";
-        
         if (!tema) return toast("Digite o tema da aula.", "warn");
         if (!professor) return toast("Selecione um professor.", "warn");
-
         try {
           await apiFetch("/aulas/iniciar", {
             method: "POST",
@@ -620,7 +563,6 @@ const APP = {
       $("#btn-entrada")?.addEventListener("click", async () => {
         const aluno_id = Number(selEntrada?.value || 0);
         if (!aluno_id) return toast("Selecione um aluno.", "warn");
-        
         try {
           await apiFetch("/aulas/entrada", { 
             method: "POST", 
@@ -648,7 +590,6 @@ const APP = {
       });
 
       await this.refreshAulaAtivaUI();
-      
     } catch (error) {
       console.error("Erro ao carregar página de aulas:", error);
       toast("Erro ao carregar dados", "err");
@@ -661,10 +602,7 @@ const APP = {
     const btnEncerrar = $("#btn-encerrar-aula");
 
     try {
-      console.log("Buscando aula ativa...");
       const data = await apiFetch("/aulas/ativa");
-      console.log("Resposta aula ativa:", data);
-      
       const aula = data?.aula;
 
       if (!aula) {
@@ -685,10 +623,7 @@ const APP = {
       }
       if (btnEncerrar) btnEncerrar.style.display = "";
 
-      console.log("Buscando presentes para aula:", aula.id);
       const pres = await apiFetch(`/aulas/presentes?aula_id=${encodeURIComponent(aula.id)}`);
-      console.log("Resposta presentes:", pres);
-      
       const presentes = pres?.presentes || [];
 
       if (list) {
@@ -697,13 +632,11 @@ const APP = {
         } else {
           list.innerHTML = presentes.map(p => {
             const saiu = !!p.horario_saida;
-            const entradaTime = p.horario_entrada ? new Date(p.horario_entrada).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "-";
-            const saidaTime = p.horario_saida ? new Date(p.horario_saida).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "";
-            
+            const entradaTime = formatTimeBR(p.horario_entrada);
+            const saidaTime = formatTimeBR(p.horario_saida);
             const right = saiu
               ? `<span class="tag">Saiu ${saidaTime} (${esc(p.retirado_por || "-")})</span>`
               : `<button class="btn btn-warn btn-sm" data-checkout="${p.frequencia_id}" data-aluno="${p.aluno_id}">Checkout</button>`;
-            
             return `
               <div class="item">
                 <div class="item-left">
@@ -726,19 +659,16 @@ const APP = {
       }
     } catch (e) {
       console.error("Erro em refreshAulaAtivaUI:", e);
-      if (box) box.innerHTML = `<div class="hint">Falha ao carregar aula ativa: ${esc(e.message)}</div>`;
-      if (list) list.innerHTML = `<div class="hint">${esc(e.message || "Erro")}</div>`;
+      if (box) box.innerHTML = `<div class="hint">Falha ao carregar aula ativa.</div>`;
+      if (list) list.innerHTML = `<div class="hint">Erro ao carregar presenças.</div>`;
       if (btnEncerrar) btnEncerrar.style.display = "none";
     }
   },
 
   async openCheckoutModal(frequenciaId, alunoId) {
     try {
-      // Tenta buscar o aluno específico primeiro
       let aluno = null;
-      
       try {
-        // Tenta buscar direto (se tiver o endpoint)
         const response = await fetch(`${API}/alunos/${alunoId}`, {
           headers: Auth.headers()
         });
@@ -746,44 +676,24 @@ const APP = {
           aluno = await response.json();
         }
       } catch (e) {
-        console.log("Endpoint específico não disponível, buscando todos");
-      }
-      
-      // Se não conseguiu, busca todos
-      if (!aluno) {
         const alunos = await apiFetch("/alunos").catch(() => []);
         aluno = Array.isArray(alunos) ? alunos.find(a => a.id === alunoId) : null;
       }
-      
-      // Fallback se ainda não encontrou
-      if (!aluno) {
-        aluno = {
-          nome: "Aluno",
-          responsavel: "",
-          autorizado_retirar: "",
-          autorizado_2: "",
-          autorizado_3: ""
-        };
-      }
-      
-      // Coleta autorizados
+
       const auths = [];
       if (aluno?.responsavel?.trim()) auths.push(aluno.responsavel.trim());
       if (aluno?.autorizado_retirar?.trim()) auths.push(aluno.autorizado_retirar.trim());
       if (aluno?.autorizado_2?.trim()) auths.push(aluno.autorizado_2.trim());
       if (aluno?.autorizado_3?.trim()) auths.push(aluno.autorizado_3.trim());
       
-      const uniq = [...new Set(auths.filter(Boolean))];
-      
-      if (uniq.length === 0) {
-        uniq.push("Responsável (não cadastrado)");
-      }
+      const uniq = [...new Set(auths)];
+      if (uniq.length === 0) uniq.push("Responsável (não cadastrado)");
 
       Modal.open({
         title: "Checkout de Segurança",
         body: `
           <div class="form">
-            <label>Quem está buscando ${aluno.nome ? esc(aluno.nome) : 'o aluno'}?</label>
+            <label>Quem está buscando ${aluno?.nome ? esc(aluno.nome) : 'o aluno'}?</label>
             <select id="checkout-who" class="form-select" required>
               <option value="">Selecione...</option>
               ${uniq.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}
@@ -803,33 +713,25 @@ const APP = {
       $("#btn-confirm-checkout")?.addEventListener("click", async () => {
         const select = $("#checkout-who");
         const retirado_por = select?.value?.trim();
-        
-        if (!retirado_por) {
+        if (!retirado_por || retirado_por === "") {
           select.style.borderColor = "var(--danger)";
           return toast("Selecione quem está buscando", "warn");
         }
-        
         try {
           await apiFetch("/aulas/saida", {
             method: "POST",
-            body: JSON.stringify({ 
-              frequencia_id: frequenciaId, 
-              retirado_por 
-            })
+            body: JSON.stringify({ frequencia_id: frequenciaId, retirado_por })
           });
-          
           toast("Saída registrada ✅", "ok");
           Modal.close();
           await this.refreshAulaAtivaUI();
         } catch (e) {
-          console.error("Erro no checkout:", e);
           toast(e.message || "Falha no checkout", "err");
         }
       });
-      
     } catch (e) {
       console.error("Erro ao abrir checkout:", e);
-      toast("Falha ao abrir checkout: " + (e.message || "erro desconhecido"), "err");
+      toast("Falha ao abrir checkout", "err");
     }
   },
 
@@ -837,7 +739,6 @@ const APP = {
   async loadHistorico() {
     const root = document.getElementById("page-historico");
     if (!root) return;
-
     root.innerHTML = `
       <div class="card">
         <div class="between-row">
@@ -850,7 +751,6 @@ const APP = {
         <div id="hist-list" class="list" style="margin-top:12px;"></div>
       </div>
     `;
-
     $("#btn-recarregar-hist")?.addEventListener("click", () => this.refreshHistoricoList());
     await this.refreshHistoricoList();
   },
@@ -858,17 +758,14 @@ const APP = {
   async refreshHistoricoList() {
     const list = $("#hist-list");
     if (!list) return;
-
     list.innerHTML = `<div class="hint">Carregando...</div>`;
     try {
       const data = await apiFetch("/historico");
       const rows = data?.historico || [];
-
       if (!rows.length) {
         list.innerHTML = `<div class="hint">Nenhuma aula encerrada ainda.</div>`;
         return;
       }
-
       list.innerHTML = rows.map(r => {
         const dt = r.data_aula ? new Date(r.data_aula).toLocaleDateString("pt-BR") : "-";
         return `
@@ -883,7 +780,6 @@ const APP = {
           </div>
         `;
       }).join("");
-
       $$("[data-hist]", list).forEach(el => {
         el.addEventListener("click", async () => {
           const id = Number(el.getAttribute("data-hist"));
@@ -900,7 +796,6 @@ const APP = {
       const data = await apiFetch(`/historico/${aulaId}`);
       const aula = data?.aula;
       const pres = data?.presencas || [];
-
       Modal.open({
         title: `Detalhes da Aula`,
         body: `
@@ -912,8 +807,8 @@ const APP = {
           <div class="hint" style="margin-top:12px;">Presenças</div>
           <div class="list" style="margin-top:8px;">
             ${pres.length ? pres.map(p => {
-              const ent = p.horario_entrada ? new Date(p.horario_entrada).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "-";
-              const sai = p.horario_saida ? new Date(p.horario_saida).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "";
+              const ent = p.horario_entrada ? formatTimeBR(p.horario_entrada) : "-";
+              const sai = p.horario_saida ? formatTimeBR(p.horario_saida) : "";
               const txtSaida = p.horario_saida ? `Saiu: ${esc(sai)} (${esc(p.retirado_por || "-")})` : "Não saiu";
               return `
                 <div class="item">
@@ -928,7 +823,6 @@ const APP = {
         `,
         footer: `<button class="btn btn-primary" data-modal-close>Fechar</button>`
       });
-
     } catch (e) {
       toast(e.message || "Falha ao abrir detalhes", "err");
     }
@@ -939,16 +833,13 @@ const APP = {
     if (!this.els.listAlunos) return;
     const q = (this.els.qAlunos?.value || "").trim();
     this.els.listAlunos.innerHTML = `<div class="hint">Carregando alunos...</div>`;
-
     try {
       const alunos = await apiFetch(`/alunos${q ? `?q=${encodeURIComponent(q)}` : ""}`);
       const arr = Array.isArray(alunos) ? alunos : [];
-
       if (!arr.length) {
         this.els.listAlunos.innerHTML = `<div class="hint">Nenhum aluno encontrado.</div>`;
         return;
       }
-
       this.els.listAlunos.innerHTML = arr.map(a => `
         <div class="item">
           <div class="item-left">
@@ -975,7 +866,6 @@ const APP = {
           </div>
         </div>
       `).join("");
-
       $$(`[data-view-aluno]`, this.els.listAlunos).forEach(b => {
         b.addEventListener("click", () => {
           const id = Number(b.getAttribute("data-view-aluno"));
@@ -983,7 +873,6 @@ const APP = {
           if (aluno) this.modalAlunoView(aluno);
         });
       });
-
       $$(`[data-edit-aluno]`, this.els.listAlunos).forEach(b => {
         b.addEventListener("click", () => {
           const id = Number(b.getAttribute("data-edit-aluno"));
@@ -991,7 +880,6 @@ const APP = {
           this.modalAluno(aluno || null);
         });
       });
-
       $$(`[data-del-aluno]`, this.els.listAlunos).forEach(b => {
         b.addEventListener("click", async () => {
           const id = Number(b.getAttribute("data-del-aluno"));
@@ -999,7 +887,6 @@ const APP = {
           await this.delAluno(id);
         });
       });
-
     } catch (e) {
       console.error(e);
       this.els.listAlunos.innerHTML = `<div class="hint">Erro ao carregar alunos.</div>`;
@@ -1018,14 +905,12 @@ const APP = {
             <div class="small">Nascimento: ${esc(a.data_nascimento || "-")}</div>
           </div>
         </div>
-
         <div class="grid2">
           <div class="card" style="box-shadow:none;margin:0">
             <div class="card-title">Responsável</div>
             <div class="small"><b>Nome:</b> ${esc(a.responsavel || "-")}</div>
             <div class="small"><b>Telefone:</b> ${esc(a.telefone || "-")}</div>
           </div>
-
           <div class="card" style="box-shadow:none;margin:0">
             <div class="card-title">Autorizados a retirar</div>
             <div class="small">1) ${esc(a.autorizado_retirar || "-")}</div>
@@ -1033,7 +918,6 @@ const APP = {
             <div class="small">3) ${esc(a.autorizado_3 || "-")}</div>
           </div>
         </div>
-
         <div class="card" style="box-shadow:none;margin-top:12px">
           <div class="card-title">Observações</div>
           <div class="small">${esc(a.observacoes || "-")}</div>
@@ -1044,14 +928,12 @@ const APP = {
         <button class="btn btn-primary" id="btn-edit">Editar</button>
       `
     });
-
     $("#btn-close")?.addEventListener("click", () => Modal.close());
     $("#btn-edit")?.addEventListener("click", () => this.modalAluno(a));
   },
 
   modalAluno(a = null) {
     const isEdit = !!a?.id;
-
     Modal.open({
       title: isEdit ? "Editar aluno" : "Novo aluno",
       bodyHTML: `
@@ -1065,7 +947,6 @@ const APP = {
             <input id="al-nasc" value="${esc(a?.data_nascimento || "")}" placeholder="dd/mm/aaaa" class="form-input">
           </div>
         </div>
-
         <div class="grid2" style="margin-top:10px">
           <div class="field">
             <label>Responsável</label>
@@ -1076,7 +957,6 @@ const APP = {
             <input id="al-tel" value="${esc(a?.telefone || "")}" placeholder="(xx) xxxxx-xxxx" class="form-input">
           </div>
         </div>
-
         <div class="grid3" style="margin-top:10px">
           <div class="field">
             <label>Autorizado 1</label>
@@ -1091,12 +971,10 @@ const APP = {
             <input id="al-aut3" value="${esc(a?.autorizado_3 || "")}" placeholder="Nome autorizado" class="form-input">
           </div>
         </div>
-
         <div class="field" style="margin-top:10px">
           <label>Observações (alergias, cuidados)</label>
           <textarea id="al-obs" class="form-input" placeholder="Ex: Alergia a amendoim...">${esc(a?.observacoes || "")}</textarea>
         </div>
-
         <div class="field" style="margin-top:10px">
           <label>Foto do aluno</label>
           <input id="al-foto" type="file" accept="image/*" class="form-input">
@@ -1116,9 +994,7 @@ const APP = {
         <button class="btn btn-success" id="al-save">${isEdit ? "Salvar" : "Cadastrar"}</button>
       `
     });
-
     $("#al-cancel")?.addEventListener("click", () => Modal.close());
-
     const fotoInput = $("#al-foto");
     fotoInput?.addEventListener("change", async () => {
       const f = fotoInput.files?.[0];
@@ -1127,11 +1003,9 @@ const APP = {
       const prev = $("#al-prev");
       if (prev) prev.innerHTML = b64 ? b64ImgTag(b64, "foto") : `<i class="fa-solid fa-camera"></i>`;
     });
-
     $("#al-save")?.addEventListener("click", async () => {
       const nome = ($("#al-nome")?.value || "").trim();
       if (!nome) return toast("Nome é obrigatório", "err");
-
       const payload = {
         nome,
         data_nascimento: ($("#al-nasc")?.value || "").trim(),
@@ -1143,7 +1017,6 @@ const APP = {
         autorizado_3: ($("#al-aut3")?.value || "").trim(),
         foto: (fotoInput?.dataset?.b64 || a?.foto || "").trim(),
       };
-
       try {
         if (isEdit) {
           await apiFetch(`/alunos/${a.id}`, { method: "PUT", body: JSON.stringify(payload) });
@@ -1181,23 +1054,19 @@ const APP = {
     if (!this.els.listUsers) return;
     const q = (this.els.qUsers?.value || "").trim();
     this.els.listUsers.innerHTML = `<div class="hint">Carregando equipe...</div>`;
-
     try {
       const users = await apiFetch(`/usuarios${q ? `?q=${encodeURIComponent(q)}` : ""}`);
       const arr = Array.isArray(users) ? users : [];
-
       const admin = isAdmin(this.me);
       if (this.els.equipeHint) {
         this.els.equipeHint.innerText = admin
           ? "Como admin, você pode cadastrar/editar/excluir membros."
           : "Somente administradores podem cadastrar/editar/excluir membros.";
       }
-
       if (!arr.length) {
         this.els.listUsers.innerHTML = `<div class="hint">Nenhum membro encontrado.</div>`;
         return;
       }
-
       this.els.listUsers.innerHTML = arr.map(u => `
         <div class="item">
           <div class="item-left">
@@ -1221,7 +1090,6 @@ const APP = {
           </div>
         </div>
       `).join("");
-
       if (admin) {
         $$(`[data-edit-user]`, this.els.listUsers).forEach(b => {
           b.addEventListener("click", () => {
@@ -1230,7 +1098,6 @@ const APP = {
             this.modalUser(user || null);
           });
         });
-
         $$(`[data-del-user]`, this.els.listUsers).forEach(b => {
           b.addEventListener("click", async () => {
             const id = Number(b.getAttribute("data-del-user"));
@@ -1240,7 +1107,6 @@ const APP = {
           });
         });
       }
-
     } catch (e) {
       console.error(e);
       this.els.listUsers.innerHTML = `<div class="hint">Erro ao carregar equipe.</div>`;
@@ -1251,9 +1117,7 @@ const APP = {
   modalUser(u = null) {
     const admin = isAdmin(this.me);
     if (!admin) return toast("Apenas admin", "err");
-
     const isEdit = !!u?.id;
-
     Modal.open({
       title: isEdit ? "Editar membro" : "Novo membro",
       bodyHTML: `
@@ -1267,7 +1131,6 @@ const APP = {
             <input id="us-user" value="${esc(u?.usuario || "")}" placeholder="ex: joao" class="form-input">
           </div>
         </div>
-
         <div class="grid2" style="margin-top:10px">
           <div class="field">
             <label>Função</label>
@@ -1283,7 +1146,6 @@ const APP = {
             <input id="us-pass" type="password" placeholder="${isEdit ? "•••••• (não altera)" : "Defina uma senha"}" class="form-input">
           </div>
         </div>
-
         <div class="grid2" style="margin-top:10px">
           <div class="field">
             <label>Telefone</label>
@@ -1294,7 +1156,6 @@ const APP = {
             <input id="us-email" value="${esc(u?.email || "")}" placeholder="email@exemplo.com" class="form-input">
           </div>
         </div>
-
         <div class="field" style="margin-top:10px">
           <label>Foto</label>
           <input id="us-foto" type="file" accept="image/*" class="form-input">
@@ -1314,11 +1175,8 @@ const APP = {
         <button class="btn btn-success" id="us-save">${isEdit ? "Salvar" : "Cadastrar"}</button>
       `
     });
-
     $("#us-role").value = (u?.role || "membro");
-
     $("#us-cancel")?.addEventListener("click", () => Modal.close());
-
     const fotoInput = $("#us-foto");
     fotoInput?.addEventListener("change", async () => {
       const f = fotoInput.files?.[0];
@@ -1327,16 +1185,13 @@ const APP = {
       const prev = $("#us-prev");
       if (prev) prev.innerHTML = b64 ? b64ImgTag(b64, "foto") : `<i class="fa-solid fa-camera"></i>`;
     });
-
     $("#us-save")?.addEventListener("click", async () => {
       const nome = ($("#us-nome")?.value || "").trim();
       const usuario = ($("#us-user")?.value || "").trim();
       const role = ($("#us-role")?.value || "membro").trim();
       const senha = ($("#us-pass")?.value || "").trim();
-
       if (!nome || !usuario) return toast("Nome e usuário são obrigatórios", "err");
       if (!isEdit && !senha) return toast("Senha é obrigatória", "err");
-
       const payload = {
         nome,
         usuario,
@@ -1346,7 +1201,6 @@ const APP = {
         email: ($("#us-email")?.value || "").trim(),
         foto: (fotoInput?.dataset?.b64 || u?.foto || "").trim(),
       };
-
       try {
         if (isEdit) {
           await apiFetch(`/usuarios/${u.id}`, { method: "PUT", body: JSON.stringify(payload) });
@@ -1383,19 +1237,15 @@ const APP = {
   async loadAvisos() {
     if (!this.els.listAvisos) return;
     this.els.listAvisos.innerHTML = `<div class="hint">Carregando avisos...</div>`;
-
     try {
       const avisos = await apiFetch("/avisos");
       this.lastAvisos = Array.isArray(avisos) ? avisos : [];
       if (this.els.statAvisos) this.els.statAvisos.innerText = String(this.lastAvisos.length);
-
       if (!this.lastAvisos.length) {
         this.els.listAvisos.innerHTML = `<div class="hint">Nenhum aviso ainda.</div>`;
         return;
       }
-
       const admin = isAdmin(this.me);
-
       this.els.listAvisos.innerHTML = this.lastAvisos.map(a => `
         <div class="card aviso">
           <div class="card-head">
@@ -1417,15 +1267,12 @@ const APP = {
               ` : ""}
             </div>
           </div>
-
           ${a.mensagem ? `<div style="margin:8px 0 10px;color:var(--text);font-weight:600">${esc(a.mensagem)}</div>` : ""}
-
           ${a.imagem ? `
             <div class="aviso-img">
               <img src="data:image/*;base64,${a.imagem}" alt="imagem do aviso">
             </div>
           ` : ""}
-
           <div class="aviso-actions">
             <button class="btn btn-outline" data-like="${a.id}">
               <i class="fa-solid fa-heart"></i> ${a.like_count ?? 0}
@@ -1439,14 +1286,12 @@ const APP = {
           </div>
         </div>
       `).join("");
-
       $$(`[data-fixar]`, this.els.listAvisos).forEach(b => {
         b.addEventListener("click", async () => {
           const id = Number(b.getAttribute("data-fixar"));
           await this.toggleFixar(id);
         });
       });
-
       $$(`[data-del-aviso]`, this.els.listAvisos).forEach(b => {
         b.addEventListener("click", async () => {
           const id = Number(b.getAttribute("data-del-aviso"));
@@ -1454,14 +1299,12 @@ const APP = {
           await this.delAviso(id);
         });
       });
-
       $$(`[data-like]`, this.els.listAvisos).forEach(b => {
         b.addEventListener("click", async () => {
           const id = Number(b.getAttribute("data-like"));
           await this.toggleLike(id);
         });
       });
-
       $$(`[data-open]`, this.els.listAvisos).forEach(b => {
         b.addEventListener("click", () => {
           const id = Number(b.getAttribute("data-open"));
@@ -1469,7 +1312,6 @@ const APP = {
           if (aviso) this.modalAvisoDetalhe(aviso);
         });
       });
-
       $$(`[data-coments]`, this.els.listAvisos).forEach(b => {
         b.addEventListener("click", () => {
           const id = Number(b.getAttribute("data-coments"));
@@ -1477,7 +1319,6 @@ const APP = {
           if (aviso) this.modalAvisoDetalhe(aviso);
         });
       });
-
     } catch (e) {
       console.error(e);
       this.els.listAvisos.innerHTML = `<div class="hint">Erro ao carregar avisos.</div>`;
@@ -1493,7 +1334,6 @@ const APP = {
           <label>Mensagem</label>
           <textarea id="av-msg" class="form-input" placeholder="Escreva o aviso..."></textarea>
         </div>
-
         <div class="field" style="margin-top:10px">
           <label>Imagem (opcional)</label>
           <input id="av-img" type="file" accept="image/*" class="form-input">
@@ -1513,9 +1353,7 @@ const APP = {
         <button class="btn btn-primary" id="av-publish">Publicar</button>
       `
     });
-
     $("#av-cancel")?.addEventListener("click", () => Modal.close());
-
     const imgInput = $("#av-img");
     imgInput?.addEventListener("change", async () => {
       const f = imgInput.files?.[0];
@@ -1524,13 +1362,10 @@ const APP = {
       const prev = $("#av-prev");
       if (prev) prev.innerHTML = b64 ? b64ImgTag(b64, "imagem") : `<i class="fa-solid fa-image"></i>`;
     });
-
     $("#av-publish")?.addEventListener("click", async () => {
       const mensagem = ($("#av-msg")?.value || "").trim();
       const imagem = (imgInput?.dataset?.b64 || "").trim();
-
       if (!mensagem && !imagem) return toast("Informe mensagem ou imagem", "err");
-
       try {
         await apiFetch("/avisos", {
           method: "POST",
@@ -1595,15 +1430,12 @@ const APP = {
         <div class="card" style="box-shadow:none;margin:0">
           <div class="card-title">${esc(aviso.autor || "Equipe")}</div>
           <div class="card-sub">${esc(fmtDate(aviso.data_criacao))}</div>
-
           ${aviso.mensagem ? `<div style="margin-top:10px;font-weight:650">${esc(aviso.mensagem)}</div>` : ""}
-
           ${aviso.imagem ? `
             <div class="aviso-img" style="margin-top:12px">
               <img src="data:image/*;base64,${aviso.imagem}" alt="imagem do aviso">
             </div>
           ` : ""}
-
           <div class="aviso-actions" style="margin-top:12px">
             <button class="btn btn-outline" id="det-like">
               <i class="fa-solid fa-heart"></i> ${aviso.like_count ?? 0}
@@ -1613,11 +1445,9 @@ const APP = {
             </button>
           </div>
         </div>
-
         <div class="card" style="box-shadow:none;margin-top:12px">
           <div class="card-title">Comentários</div>
           <div id="det-comments" class="comments"></div>
-
           <div class="field" style="margin-top:10px">
             <label>Adicionar comentário</label>
             <input id="det-text" class="form-input" placeholder="Escreva um comentário...">
@@ -1643,10 +1473,8 @@ const APP = {
           box.innerHTML = `<div class="hint">Nenhum comentário ainda.</div>`;
           return;
         }
-
         const admin = isAdmin(this.me);
         const myId = this.me?.usuario?.id;
-
         box.innerHTML = arr.map(c => `
           <div class="comment">
             <div class="comment-head">
@@ -1663,7 +1491,6 @@ const APP = {
             </div>
           </div>
         `).join("");
-
         $$(`[data-del-com]`, box).forEach(b => {
           b.addEventListener("click", async () => {
             const cid = Number(b.getAttribute("data-del-com"));
@@ -1674,7 +1501,6 @@ const APP = {
             await this.loadHomePinned();
           });
         });
-
       } catch (e) {
         console.error(e);
         box.innerHTML = `<div class="hint">Falha ao carregar comentários.</div>`;
@@ -1693,7 +1519,6 @@ const APP = {
       const novo = this.lastAvisos.find(x => x.id === aviso.id) || aviso;
       this.modalAvisoDetalhe(novo);
     });
-
     $("#det-send")?.addEventListener("click", async () => {
       const txt = ($("#det-text")?.value || "").trim();
       if (!txt) return toast("Comentário vazio", "err");
@@ -1712,7 +1537,6 @@ const APP = {
         toast("Erro ao comentar", "err");
       }
     });
-
     await loadComments();
   },
 
@@ -1754,7 +1578,7 @@ const APP = {
       toast("Falha ao limpar cache", "err");
     }
   }
-}; // <--- CHAVE DE FECHAMENTO DO OBJETO APP (corrigido!)
+}; // <--- CHAVE DE FECHAMENTO DO OBJETO APP
 
 window.APP = APP;
 
