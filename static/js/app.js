@@ -691,7 +691,7 @@ const APP = {
 
       Modal.open({
         title: "Checkout de Segurança",
-        body: `
+        bodyHTML: `
           <div class="form">
             <label>Quem está buscando ${aluno?.nome ? esc(aluno.nome) : 'o aluno'}?</label>
             <select id="checkout-who" class="form-select" required>
@@ -704,7 +704,7 @@ const APP = {
             </div>
           </div>
         `,
-        footer: `
+        footerHTML: `
           <button class="btn btn-outline" data-modal-close>Cancelar</button>
           <button class="btn btn-success" id="btn-confirm-checkout">Confirmar saída</button>
         `
@@ -798,7 +798,7 @@ const APP = {
       const pres = data?.presencas || [];
       Modal.open({
         title: `Detalhes da Aula`,
-        body: `
+        bodyHTML: `
           <div class="card mini" style="background:#f8fafc;">
             <div><b>Tema:</b> ${esc(aula?.tema || "-")}</div>
             <div><b>Equipe:</b> ${esc(aula?.professores || "-")}</div>
@@ -821,7 +821,7 @@ const APP = {
             }).join("") : `<div class="hint">Sem registros de presença.</div>`}
           </div>
         `,
-        footer: `<button class="btn btn-primary" data-modal-close>Fechar</button>`
+        footerHTML: `<button class="btn btn-primary" data-modal-close>Fechar</button>`
       });
     } catch (e) {
       toast(e.message || "Falha ao abrir detalhes", "err");
