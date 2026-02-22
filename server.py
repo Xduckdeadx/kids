@@ -352,6 +352,32 @@ def alunos_list():
         return api_error("Erro ao listar alunos", 500, e)
 
 
+@app.route("/api/alunos/<int:aluno_id>", methods=["GET"])
+@require_auth
+def alunos_get(aluno_id):
+    """Busca um aluno específico por ID"""
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, nome, data_nascimento, responsavel, telefone, observacoes,
+                   autorizado_retirar, autorizado_2, autorizado_3, foto
+            FROM alunos
+            WHERE id = %s
+        """, (aluno_id,))
+        aluno = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not aluno:
+            return api_error("Aluno não encontrado", 404)
+            
+        return jsonify(aluno)
+    except Exception as e:
+        print("Erro em /api/alunos/<int:aluno_id>:", str(e))
+        return api_error("Erro ao buscar aluno", 500, e)
+
+
 @app.route("/api/alunos", methods=["POST"])
 @require_auth
 def alunos_create():
@@ -836,7 +862,7 @@ def comentarios_delete(comentario_id):
 
 
 # ==========================================================
-# AULAS (VERSÃO CORRIGIDA)
+# AULAS 
 # ==========================================================
 @app.get("/api/aulas/ativa")
 @require_auth
@@ -852,11 +878,9 @@ def aulas_ativa():
         cur.close()
         conn.close()
         
-        # Se não encontrar aula ativa, retorna None
         if not row:
             return jsonify({"ok": True, "aula": None})
             
-        # Converter datetime para string ISO
         if row.get("data_aula"):
             row["data_aula"] = row["data_aula"].isoformat()
         if row.get("encerrada_em"):
@@ -890,10 +914,8 @@ def aulas_iniciar():
         conn = db()
         cur = conn.cursor()
         
-        # Encerra qualquer aula ativa anterior
         cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL")
         
-        # Cria nova aula
         cur.execute(
             "INSERT INTO aulas (data_aula, tema, professores) VALUES (NOW(), %s, %s) RETURNING id",
             (tema, professores),
@@ -923,10 +945,8 @@ def aulas_encerrar():
         cur = conn.cursor()
         
         if aula_id:
-            # Encerra aula específica
             cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE id=%s RETURNING id", (aula_id,))
         else:
-            # Encerra aula ativa
             cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL RETURNING id")
             
         row = cur.fetchone()
@@ -947,7 +967,6 @@ def aulas_presentes():
     try:
         aula_id = request.args.get("aula_id")
         
-        # Se não veio aula_id, tenta pegar a aula ativa
         if not aula_id:
             conn = db()
             cur = conn.cursor()
@@ -961,7 +980,6 @@ def aulas_presentes():
             else:
                 return jsonify({"ok": True, "aula_id": None, "presentes": []})
 
-        # Converte para inteiro
         try:
             aula_id = int(aula_id)
         except (TypeError, ValueError):
@@ -984,7 +1002,6 @@ def aulas_presentes():
         cur.close()
         conn.close()
         
-        # Converter datetime para string ISO
         for p in presentes:
             if p.get("horario_entrada"):
                 p["horario_entrada"] = p["horario_entrada"].isoformat()
@@ -1009,7 +1026,6 @@ def aulas_entrada():
         if not aluno_id:
             return api_error("aluno_id é obrigatório", 400)
 
-        # Se não veio aula_id, pega aula ativa
         if not aula_id:
             conn = db()
             cur = conn.cursor()
@@ -1025,7 +1041,6 @@ def aulas_entrada():
         conn = db()
         cur = conn.cursor()
         
-        # Tenta inserir, se já existir não faz nada (ON CONFLICT)
         cur.execute(
             """
             INSERT INTO frequencia (id_aula, id_aluno, horario_entrada)
@@ -1107,7 +1122,6 @@ def historico_listar():
         cur.close()
         conn.close()
         
-        # Converter datetime para string ISO
         for r in rows:
             if r.get("data_aula"):
                 r["data_aula"] = r["data_aula"].isoformat()
@@ -1126,7 +1140,6 @@ def historico_detalhe(aula_id):
         conn = db()
         cur = conn.cursor()
         
-        # Busca dados da aula
         cur.execute("SELECT id, data_aula, tema, professores FROM aulas WHERE id=%s", (aula_id,))
         aula = cur.fetchone()
         
@@ -1135,11 +1148,9 @@ def historico_detalhe(aula_id):
             conn.close()
             return api_error("Aula não encontrada", 404)
         
-        # Converter datetime
         if aula.get("data_aula"):
             aula["data_aula"] = aula["data_aula"].isoformat()
 
-        # Busca presenças
         cur.execute(
             """
             SELECT a.id AS aluno_id, a.nome, f.horario_entrada, f.horario_saida, f.retirado_por
@@ -1152,7 +1163,6 @@ def historico_detalhe(aula_id):
         )
         presencas = cur.fetchall()
         
-        # Converter datetimes
         for p in presencas:
             if p.get("horario_entrada"):
                 p["horario_entrada"] = p["horario_entrada"].isoformat()
@@ -1168,6 +1178,9 @@ def historico_detalhe(aula_id):
         return api_error("Erro ao buscar detalhes", 500, e)
 
 
+# ==========================================================
+# INICIALIZAÇÃO DO SERVIDOR
+# ==========================================================
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 5000))
