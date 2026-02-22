@@ -463,13 +463,12 @@ const APP = {
           <div class="hint">Escolha a equipe e o tema, depois inicie.</div>
           <div class="form">
             <label>Professor(a) *</label>
-            <select id="aula-prof" class="form-select">
-              <option value="">Carregando professores...</option>
-            </select>
+            <input id="aula-prof" class="form-input" list="dl-professores" placeholder="Digite o nome do professor...">
+            <datalist id="dl-professores"></datalist>
+
             <label>Auxiliar</label>
-            <select id="aula-aux" class="form-select">
-              <option value="Nenhum">Nenhum</option>
-            </select>
+            <input id="aula-aux" class="form-input" list="dl-auxiliares" placeholder="Digite o nome do auxiliar (ou deixe vazio)">
+            <datalist id="dl-auxiliares"></datalist>
             <label>Tema *</label>
             <input id="aula-tema" type="text" placeholder="Ex: A Arca de Noé" class="form-input">
             <button id="btn-iniciar-aula" class="btn btn-success">Iniciar aula</button>
@@ -489,9 +488,10 @@ const APP = {
           <button id="btn-encerrar-aula" class="btn btn-danger" style="display:none;">Encerrar aula</button>
         </div>
         <div class="between-row" style="gap:10px; margin-top:12px;">
-          <select id="entrada-aluno" class="form-select" style="flex:1;">
-            <option value="">Carregando alunos...</option>
-          </select>
+          <div style="flex:1;">
+            <input id="entrada-aluno" class="form-input" list="dl-alunos" placeholder="Digite o nome do aluno...">
+            <datalist id="dl-alunos"></datalist>
+          </div>
           <button id="btn-entrada" class="btn btn-success">Dar entrada</button>
         </div>
         <div id="lista-presentes" class="list" style="margin-top:12px;"></div>
@@ -513,32 +513,38 @@ const APP = {
 
       if (selProf) {
         if (usuarios.length === 0) {
-          selProf.innerHTML = '<option value="">Nenhum professor cadastrado</option>';
+          selProf.value = "";
+          $("#dl-professores")?.replaceChildren();
         } else {
-          selProf.innerHTML = usuarios.map(u => 
-            `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`
-          ).join('');
+          const dl = $("#dl-professores");
+          if (dl) {
+            dl.innerHTML = usuarios.map(u => `<option value="${esc(u.nome)}"></option>`).join("");
+          }
+          // se só tiver 1, pré-preenche
+          if (usuarios.length === 1) selProf.value = usuarios[0].nome || "";
         }
       }
 
       if (selAux) {
-        let auxOptions = '<option value="Nenhum">Nenhum</option>';
-        if (usuarios.length > 0) {
-          auxOptions += usuarios.map(u => 
-            `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`
-          ).join('');
+        const dl = $("#dl-auxiliares");
+        if (dl) {
+          const opts = ['Nenhum', ...usuarios.map(u => u.nome).filter(Boolean)];
+          dl.innerHTML = opts.map(n => `<option value="${esc(n)}"></option>`).join("");
         }
-        selAux.innerHTML = auxOptions;
+        if (!selAux.value) selAux.value = "Nenhum";
       }
 
       if (selEntrada) {
-        if (alunosList.length === 0) {
-          selEntrada.innerHTML = '<option value="">Nenhum aluno cadastrado</option>';
-        } else {
-          selEntrada.innerHTML = alunosList.map(a => 
-            `<option value="${a.id}">${esc(a.nome)}</option>`
-          ).join('');
+        const dl = $("#dl-alunos");
+        if (dl) {
+          dl.innerHTML = alunosList
+            .filter(a => a && a.nome)
+            .sort((a,b) => (a.nome||"").localeCompare(b.nome||"", "pt-BR"))
+            .map(a => `<option data-id="${a.id}" value="${esc(a.nome)}"></option>`)
+            .join("");
         }
+        // guarda pra resolver nome -> id no clique
+        window.__ALUNOS_CACHE__ = alunosList;
       }
 
       $("#btn-iniciar-aula")?.addEventListener("click", async () => {
@@ -561,14 +567,30 @@ const APP = {
       });
 
       $("#btn-entrada")?.addEventListener("click", async () => {
-        const aluno_id = Number(selEntrada?.value || 0);
-        if (!aluno_id) return toast("Selecione um aluno.", "warn");
+        const nomeDigitado = (selEntrada?.value || "").trim();
+        if (!nomeDigitado) return toast("Digite o nome do aluno.", "warn");
+
+        const lista = Array.isArray(window.__ALUNOS_CACHE__) ? window.__ALUNOS_CACHE__ : [];
+        // tenta match exato primeiro
+        let aluno = lista.find(a => (a?.nome || "").toLowerCase() === nomeDigitado.toLowerCase());
+
+        // se não achar, tenta "contém" (pra ajudar quando a pessoa não digita completo)
+        if (!aluno) {
+          const hits = lista.filter(a => (a?.nome || "").toLowerCase().includes(nomeDigitado.toLowerCase()));
+          if (hits.length === 1) aluno = hits[0];
+          if (hits.length > 1) return toast("Achei mais de 1 aluno com esse nome. Digite mais completo.", "warn");
+        }
+
+        const aluno_id = Number(aluno?.id || 0);
+        if (!aluno_id) return toast("Aluno não encontrado. Verifique o nome.", "warn");
+
         try {
           await apiFetch("/aulas/entrada", { 
             method: "POST", 
             body: JSON.stringify({ aluno_id }) 
           });
-          toast("Entrada registrada ✅", "ok");
+          toast(`Entrada registrada ✅ (${aluno.nome})`, "ok");
+          selEntrada.value = "";
           await this.refreshAulaAtivaUI();
         } catch (e) {
           toast(e.message || "Falha ao dar entrada", "err");
@@ -1584,7 +1606,31 @@ window.APP = APP;
 
 document.addEventListener("DOMContentLoaded", () => {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    navigator.serviceWorker.register("/sw.js").then((reg) => {
+      // tenta buscar atualização sempre que abrir
+      reg.update().catch(() => {});
+
+      // se já tem uma atualização esperando, aplica sem pedir pra pessoa limpar cache
+      if (reg.waiting) {
+        reg.waiting.postMessage({ type: "SKIP_WAITING" });
+      }
+
+      reg.addEventListener("updatefound", () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener("statechange", () => {
+          if (nw.state === "installed" && navigator.serviceWorker.controller) {
+            // força ativar a nova versão
+            reg.waiting?.postMessage({ type: "SKIP_WAITING" });
+          }
+        });
+      });
+    }).catch(() => {});
+
+    // quando o SW troca, recarrega automático
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      window.location.reload();
+    });
   }
   APP.boot();
 });
