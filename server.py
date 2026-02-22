@@ -836,9 +836,11 @@ def comentarios_delete(comentario_id):
 
 
 # ---------------- Aulas ----------------
+# ---------------- Aulas (VERSÃO CORRIGIDA) ----------------
 @app.get("/api/aulas/ativa")
 @require_auth
 def aulas_ativa():
+    """Retorna a aula ativa (encerrada_em IS NULL) mais recente"""
     try:
         conn = db()
         cur = conn.cursor()
@@ -848,14 +850,27 @@ def aulas_ativa():
         row = cur.fetchone()
         cur.close()
         conn.close()
+        
+        # Se não encontrar aula ativa, retorna None
+        if not row:
+            return jsonify({"ok": True, "aula": None})
+            
+        # Converter datetime para string ISO
+        if row.get("data_aula"):
+            row["data_aula"] = row["data_aula"].isoformat()
+        if row.get("encerrada_em"):
+            row["encerrada_em"] = row["encerrada_em"].isoformat()
+            
         return jsonify({"ok": True, "aula": row})
     except Exception as e:
+        print("Erro em /api/aulas/ativa:", str(e))
         return api_error("Erro ao buscar aula ativa", 500, e)
 
 
 @app.post("/api/aulas/iniciar")
 @require_auth
 def aulas_iniciar():
+    """Inicia uma nova aula"""
     try:
         body = request.get_json(force=True, silent=True) or {}
         tema = (body.get("tema") or "").strip()
@@ -864,69 +879,91 @@ def aulas_iniciar():
 
         if not tema:
             return api_error("Tema é obrigatório", 400)
+        if not professor:
+            return api_error("Professor é obrigatório", 400)
 
         professores = professor
         if auxiliar and auxiliar.lower() != "nenhum":
-            professores = f"{professor} / Aux: {auxiliar}" if professor else f"Aux: {auxiliar}"
+            professores = f"{professor} / Aux: {auxiliar}"
 
         conn = db()
         cur = conn.cursor()
+        
+        # Encerra qualquer aula ativa anterior
         cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL")
+        
+        # Cria nova aula
         cur.execute(
             "INSERT INTO aulas (data_aula, tema, professores) VALUES (NOW(), %s, %s) RETURNING id",
             (tema, professores),
         )
-        aula_id = cur.fetchone()["id"]
+        result = cur.fetchone()
+        aula_id = result["id"] if result else None
+        
         conn.commit()
         cur.close()
         conn.close()
+        
         return jsonify({"ok": True, "aula_id": aula_id})
     except Exception as e:
+        print("Erro em /api/aulas/iniciar:", str(e))
         return api_error("Erro ao iniciar aula", 500, e)
 
 
 @app.post("/api/aulas/encerrar")
 @require_auth
 def aulas_encerrar():
+    """Encerra uma aula ativa"""
     try:
         body = request.get_json(force=True, silent=True) or {}
         aula_id = body.get("aula_id")
-        if not aula_id:
-            conn = db()
-            cur = conn.cursor()
-            cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL RETURNING id")
-            row = cur.fetchone()
-            conn.commit()
-            cur.close()
-            conn.close()
-            return jsonify({"ok": True, "aula_id": row["id"] if row else None})
-
+        
         conn = db()
         cur = conn.cursor()
-        cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE id=%s", (aula_id,))
+        
+        if aula_id:
+            # Encerra aula específica
+            cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE id=%s RETURNING id", (aula_id,))
+        else:
+            # Encerra aula ativa
+            cur.execute("UPDATE aulas SET encerrada_em = NOW() WHERE encerrada_em IS NULL RETURNING id")
+            
+        row = cur.fetchone()
         conn.commit()
         cur.close()
         conn.close()
-        return jsonify({"ok": True, "aula_id": aula_id})
+        
+        return jsonify({"ok": True, "aula_id": row["id"] if row else None})
     except Exception as e:
+        print("Erro em /api/aulas/encerrar:", str(e))
         return api_error("Erro ao encerrar aula", 500, e)
 
 
 @app.get("/api/aulas/presentes")
 @require_auth
 def aulas_presentes():
+    """Lista os presentes em uma aula"""
     try:
         aula_id = request.args.get("aula_id")
+        
+        # Se não veio aula_id, tenta pegar a aula ativa
         if not aula_id:
             conn = db()
             cur = conn.cursor()
             cur.execute("SELECT id FROM aulas WHERE encerrada_em IS NULL ORDER BY data_aula DESC LIMIT 1")
             r = cur.fetchone()
-            aula_id = r["id"] if r else None
             cur.close()
             conn.close()
+            
+            if r:
+                aula_id = r["id"]
+            else:
+                return jsonify({"ok": True, "aula_id": None, "presentes": []})
 
-        if not aula_id:
+        # Converte para inteiro
+        try:
+            aula_id = int(aula_id)
+        except (TypeError, ValueError):
             return jsonify({"ok": True, "aula_id": None, "presentes": []})
 
         conn = db()
@@ -938,21 +975,31 @@ def aulas_presentes():
             FROM frequencia f
             JOIN alunos a ON a.id = f.id_aluno
             WHERE f.id_aula = %s
-            ORDER BY f.horario_entrada DESC NULLS LAST
+            ORDER BY a.nome ASC
             """,
             (aula_id,),
         )
         presentes = cur.fetchall()
         cur.close()
         conn.close()
-        return jsonify({"ok": True, "aula_id": int(aula_id), "presentes": presentes})
+        
+        # Converter datetime para string ISO
+        for p in presentes:
+            if p.get("horario_entrada"):
+                p["horario_entrada"] = p["horario_entrada"].isoformat()
+            if p.get("horario_saida"):
+                p["horario_saida"] = p["horario_saida"].isoformat()
+        
+        return jsonify({"ok": True, "aula_id": aula_id, "presentes": presentes})
     except Exception as e:
+        print("Erro em /api/aulas/presentes:", str(e))
         return api_error("Erro ao listar presença", 500, e)
 
 
 @app.post("/api/aulas/entrada")
 @require_auth
 def aulas_entrada():
+    """Registra entrada de um aluno"""
     try:
         body = request.get_json(force=True, silent=True) or {}
         aula_id = body.get("aula_id")
@@ -961,39 +1008,53 @@ def aulas_entrada():
         if not aluno_id:
             return api_error("aluno_id é obrigatório", 400)
 
+        # Se não veio aula_id, pega aula ativa
         if not aula_id:
             conn = db()
             cur = conn.cursor()
             cur.execute("SELECT id FROM aulas WHERE encerrada_em IS NULL ORDER BY data_aula DESC LIMIT 1")
             r = cur.fetchone()
-            aula_id = r["id"] if r else None
             cur.close()
             conn.close()
-
-        if not aula_id:
-            return api_error("Não há aula ativa", 400)
+            
+            if not r:
+                return api_error("Não há aula ativa", 400)
+            aula_id = r["id"]
 
         conn = db()
         cur = conn.cursor()
+        
+        # Tenta inserir, se já existir não faz nada (ON CONFLICT)
         cur.execute(
             """
             INSERT INTO frequencia (id_aula, id_aluno, horario_entrada)
             VALUES (%s, %s, NOW())
             ON CONFLICT (id_aula, id_aluno) DO NOTHING
+            RETURNING id
             """,
             (aula_id, aluno_id),
         )
+        
+        result = cur.fetchone()
         conn.commit()
         cur.close()
         conn.close()
-        return jsonify({"ok": True, "aula_id": int(aula_id), "aluno_id": int(aluno_id)})
+        
+        return jsonify({
+            "ok": True, 
+            "aula_id": int(aula_id), 
+            "aluno_id": int(aluno_id),
+            "frequencia_id": result["id"] if result else None
+        })
     except Exception as e:
+        print("Erro em /api/aulas/entrada:", str(e))
         return api_error("Erro ao dar entrada", 500, e)
 
 
 @app.post("/api/aulas/saida")
 @require_auth
 def aulas_saida():
+    """Registra saída de um aluno"""
     try:
         body = request.get_json(force=True, silent=True) or {}
         frequencia_id = body.get("frequencia_id")
@@ -1006,21 +1067,26 @@ def aulas_saida():
 
         conn = db()
         cur = conn.cursor()
+        
         cur.execute(
             "UPDATE frequencia SET horario_saida = NOW(), retirado_por = %s WHERE id = %s",
             (retirado_por, frequencia_id),
         )
+        
         conn.commit()
         cur.close()
         conn.close()
+        
         return jsonify({"ok": True})
     except Exception as e:
+        print("Erro em /api/aulas/saida:", str(e))
         return api_error("Erro ao registrar saída", 500, e)
 
 
 @app.get("/api/historico")
 @require_auth
 def historico_listar():
+    """Lista histórico de aulas encerradas"""
     try:
         conn = db()
         cur = conn.cursor()
@@ -1039,24 +1105,40 @@ def historico_listar():
         rows = cur.fetchall()
         cur.close()
         conn.close()
+        
+        # Converter datetime para string ISO
+        for r in rows:
+            if r.get("data_aula"):
+                r["data_aula"] = r["data_aula"].isoformat()
+        
         return jsonify({"ok": True, "historico": rows})
     except Exception as e:
+        print("Erro em /api/historico:", str(e))
         return api_error("Erro ao listar histórico", 500, e)
 
 
 @app.get("/api/historico/<int:aula_id>")
 @require_auth
-def historico_detalhe(aula_id: int):
+def historico_detalhe(aula_id):
+    """Detalhes de uma aula específica"""
     try:
         conn = db()
         cur = conn.cursor()
+        
+        # Busca dados da aula
         cur.execute("SELECT id, data_aula, tema, professores FROM aulas WHERE id=%s", (aula_id,))
         aula = cur.fetchone()
+        
         if not aula:
             cur.close()
             conn.close()
             return api_error("Aula não encontrada", 404)
+        
+        # Converter datetime
+        if aula.get("data_aula"):
+            aula["data_aula"] = aula["data_aula"].isoformat()
 
+        # Busca presenças
         cur.execute(
             """
             SELECT a.id AS aluno_id, a.nome, f.horario_entrada, f.horario_saida, f.retirado_por
@@ -1068,14 +1150,19 @@ def historico_detalhe(aula_id: int):
             (aula_id,),
         )
         presencas = cur.fetchall()
+        
+        # Converter datetimes
+        for p in presencas:
+            if p.get("horario_entrada"):
+                p["horario_entrada"] = p["horario_entrada"].isoformat()
+            if p.get("horario_saida"):
+                p["horario_saida"] = p["horario_saida"].isoformat()
+        
         cur.close()
         conn.close()
+        
         return jsonify({"ok": True, "aula": aula, "presencas": presencas})
     except Exception as e:
-        return api_error("Erro ao buscar detalhes", 500, e)
-
-
-if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))
+        print("Erro em /api/historico/<int:aula_id>:", str(e))
+        return api_error("Erro ao buscar detalhes", 500, e))
     app.run(host="0.0.0.0", port=port)
