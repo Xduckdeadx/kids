@@ -835,8 +835,9 @@ def comentarios_delete(comentario_id):
         return api_error("Erro ao excluir comentário", 500, e)
 
 
-# ---------------- Aulas ----------------
-# ---------------- Aulas (VERSÃO CORRIGIDA) ----------------
+# ==========================================================
+# AULAS (VERSÃO CORRIGIDA)
+# ==========================================================
 @app.get("/api/aulas/ativa")
 @require_auth
 def aulas_ativa():
@@ -1164,5 +1165,10 @@ def historico_detalhe(aula_id):
         return jsonify({"ok": True, "aula": aula, "presencas": presencas})
     except Exception as e:
         print("Erro em /api/historico/<int:aula_id>:", str(e))
-        return api_error("Erro ao buscar detalhes", 500, e))
+        return api_error("Erro ao buscar detalhes", 500, e)
+
+
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
