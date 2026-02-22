@@ -1,4 +1,4 @@
-/* Kid IEQ 2025 - app.js (FULL) */
+/* Kid IEQ 2025 - app.js (VERSÃO CORRIGIDA) */
 const API = "/api";
 
 /* ---------------- helpers ---------------- */
@@ -50,7 +50,6 @@ async function fileToBase64(file) {
     reader.onerror = () => reject(new Error("Falha ao ler arquivo"));
     reader.onload = () => {
       const res = String(reader.result || "");
-      // res vem como data:image/...;base64,XXXX
       const parts = res.split(",");
       resolve(parts[1] || "");
     };
@@ -135,7 +134,6 @@ const Modal = {
       </div>
     `;
     $("#modal-close")?.addEventListener("click", () => this.close());
-    // Fecha ao clicar fora
     $(".modal")?.addEventListener("click", (e) => {
       if (e.target === $(".modal")) this.close();
     });
@@ -169,30 +167,25 @@ const APP = {
     this.els.pageTitle = $("#page-title");
     this.els.pageSub = $("#page-sub");
 
-    // Home widgets
     this.els.statAlunos = $("#stat-alunos");
     this.els.statEquipe = $("#stat-equipe");
     this.els.statAvisos = $("#stat-avisos");
     this.els.homePinned = $("#home-pinned");
 
-    // Alunos
     this.els.btnNovoAluno = $("#btn-novo-aluno");
     this.els.qAlunos = $("#q-alunos");
     this.els.btnBuscarAlunos = $("#btn-buscar-alunos");
     this.els.listAlunos = $("#list-alunos");
 
-    // Equipe
     this.els.btnNovoUser = $("#btn-novo-user");
     this.els.qUsers = $("#q-users");
     this.els.btnBuscarUsers = $("#btn-buscar-users");
     this.els.listUsers = $("#list-users");
     this.els.equipeHint = $("#equipe-hint");
 
-    // Mural
     this.els.btnNovoAviso = $("#btn-novo-aviso");
     this.els.listAvisos = $("#list-avisos");
 
-    // Config
     this.els.darkToggle = $("#dark-toggle");
     this.els.btnAbout = $("#btn-about");
     this.els.btnClear = $("#btn-clear");
@@ -228,7 +221,6 @@ const APP = {
     this.bindEls();
     Modal.init();
 
-    // tema persistido
     const savedTheme = localStorage.getItem("kid_ieq_theme") || "light";
     this.setTheme(savedTheme === "dark");
 
@@ -237,7 +229,6 @@ const APP = {
     this.showScreen("loading");
     this.setLoading("Iniciando...");
 
-    // tenta sessão
     this.setLoading("Verificando sessão...");
     const ok = await this.trySession();
     if (!ok) {
@@ -250,7 +241,6 @@ const APP = {
   },
 
   bindEvents() {
-    // sidebar navegação
     $$(".side-item").forEach(btn => {
       btn.addEventListener("click", async () => {
         const page = btn.getAttribute("data-page");
@@ -258,49 +248,40 @@ const APP = {
       });
     });
 
-    // login
     this.els.btnLogin?.addEventListener("click", () => this.login());
     this.els.loginPass?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this.login();
     });
 
-    // logout
     this.els.btnLogout?.addEventListener("click", () => this.logout());
 
-    // mobile sidebar
     this.els.btnToggleSide?.addEventListener("click", () => {
       $(".sidebar")?.classList.toggle("open");
     });
 
-    // sync
     this.els.btnSync?.addEventListener("click", async () => {
       await this.loadPage(this.page);
       toast("Atualizado", "ok");
     });
 
-    // theme
     this.els.btnTheme?.addEventListener("click", () => this.toggleTheme());
     this.els.darkToggle?.addEventListener("change", (e) => this.setTheme(e.target.checked));
 
-    // config
     this.els.btnAbout?.addEventListener("click", () => this.showAbout());
     this.els.btnClear?.addEventListener("click", () => this.clearLocalCache());
 
-    // alunos
     this.els.btnNovoAluno?.addEventListener("click", () => this.modalAluno());
     this.els.btnBuscarAlunos?.addEventListener("click", () => this.loadAlunos());
     this.els.qAlunos?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this.loadAlunos();
     });
 
-    // equipe
     this.els.btnNovoUser?.addEventListener("click", () => this.modalUser());
     this.els.btnBuscarUsers?.addEventListener("click", () => this.loadEquipe());
     this.els.qUsers?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this.loadEquipe();
     });
 
-    // mural
     this.els.btnNovoAviso?.addEventListener("click", () => this.modalAviso());
   },
 
@@ -380,30 +361,25 @@ const APP = {
       else avatar.innerHTML = `<i class="fa-solid fa-user"></i>`;
     }
 
-    // permissões
     const admin = isAdmin(this.me);
     if (this.els.btnNovoUser) this.els.btnNovoUser.style.display = admin ? "" : "none";
-    if (this.els.btnNovoAviso) this.els.btnNovoAviso.style.display = "" ; // todos podem postar
+    if (this.els.btnNovoAviso) this.els.btnNovoAviso.style.display = "";
   },
 
   async go(page) {
     this.page = page || "home";
 
-    // ativa item
     $$(".side-item").forEach(b => b.classList.remove("active"));
     $(`.side-item[data-page="${this.page}"]`)?.classList.add("active");
 
-    // show page section
     const pages = ["home","alunos","equipe","mural","aulas","historico","config"];
     pages.forEach(p => {
       const sec = document.getElementById(`page-${p}`);
       if (sec) sec.style.display = (p === this.page) ? "" : "none";
     });
 
-    // fecha sidebar em mobile
     $(".sidebar")?.classList.remove("open");
 
-    // header texts
     const mapTitle = {
       home: ["Início", "Resumo do sistema"],
       alunos: ["Alunos", "Cadastros e fichas"],
@@ -431,30 +407,91 @@ const APP = {
     if (page === "alunos") return this.loadAlunos();
     if (page === "equipe") return this.loadEquipe();
     if (page === "mural") return this.loadAvisos();
-
     if (page === "aulas") return this.loadAulas();
     if (page === "historico") return this.loadHistorico();
     if (page === "config") return;
   },
 
-  renderComingSoon(pageId, text) {
-    const el = document.getElementById(pageId);
-    if (!el) return;
-    el.innerHTML = `
-      <div class="card">
-        <div class="hint">${esc(text || "Em breve.")}</div>
-      </div>
-    `;
+  /* ---------------- HOME ---------------- */
+  async loadStats() {
+    try {
+      const data = await apiFetch("/estatisticas");
+      const totalAlunos = data.total_alunos ?? 0;
+      const totalEquipe = data.total_equipe ?? 0;
+      const totalAvisos = data.total_avisos ?? 0;
+
+      if (this.els.statAlunos) this.els.statAlunos.innerText = String(totalAlunos);
+      if (this.els.statEquipe) this.els.statEquipe.innerText = String(totalEquipe);
+      if (this.els.statAvisos) this.els.statAvisos.innerText = String(totalAvisos);
+    } catch (e) {
+      console.warn(e);
+      if (this.els.statAlunos) this.els.statAlunos.innerText = "0";
+      if (this.els.statEquipe) this.els.statEquipe.innerText = "0";
+      if (this.els.statAvisos) this.els.statAvisos.innerText = "0";
+      if (e.status === 401) await this.logout();
+    }
   },
 
+  async loadHomePinned() {
+    if (!this.els.homePinned) return;
+    this.els.homePinned.innerHTML = `<div class="hint">Carregando avisos fixados...</div>`;
 
+    try {
+      const avisos = await apiFetch("/avisos");
+      this.lastAvisos = Array.isArray(avisos) ? avisos : [];
+      const pinned = this.lastAvisos.filter(a => !!a.fixado).slice(0, 6);
+      this.lastPinned = pinned;
 
-  /* ---------------- AULAS ---------------- */
+      if (this.els.statAvisos) this.els.statAvisos.innerText = String(this.lastAvisos.length);
+
+      if (!pinned.length) {
+        this.els.homePinned.innerHTML = `<div class="hint">Nenhum aviso fixado ainda.</div>`;
+        return;
+      }
+
+      this.els.homePinned.innerHTML = pinned.map(a => `
+        <div class="item">
+          <div class="item-left">
+            <div class="avatar" style="width:42px;height:42px;border-radius:14px;">
+              <i class="fa-solid fa-thumbtack"></i>
+            </div>
+            <div>
+              <div class="item-title">${esc((a.mensagem || "").slice(0, 60) || "Aviso")}</div>
+              <div class="item-sub">
+                ${esc(a.autor || "Equipe")} • ${esc(fmtDate(a.data_criacao))}
+              </div>
+            </div>
+          </div>
+          <div class="item-actions">
+            <span class="tag"><i class="fa-solid fa-heart"></i> ${a.like_count ?? 0}</span>
+            <span class="tag"><i class="fa-solid fa-comment"></i> ${a.comment_count ?? 0}</span>
+            <button class="btn btn-outline" data-open-aviso="${a.id}">
+              Ver
+            </button>
+          </div>
+        </div>
+      `).join("");
+
+      $$(`[data-open-aviso]`, this.els.homePinned).forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = Number(btn.getAttribute("data-open-aviso"));
+          const aviso = this.lastAvisos.find(x => x.id === id);
+          if (aviso) this.modalAvisoDetalhe(aviso);
+        });
+      });
+
+    } catch (e) {
+      console.error(e);
+      this.els.homePinned.innerHTML = `<div class="hint">Falha ao carregar avisos fixados.</div>`;
+      if (e.status === 401) await this.logout();
+    }
+  },
+
+  /* ---------------- AULAS (CORRIGIDO) ---------------- */
   async loadAulas() {
     const root = document.getElementById("page-aulas");
     if (!root) return;
 
-    // UI base
     root.innerHTML = `
       <div class="grid2">
         <div class="card">
@@ -462,14 +499,18 @@ const APP = {
           <div class="hint">Escolha a equipe e o tema, depois inicie.</div>
 
           <div class="form">
-            <label>Professor(a)</label>
-            <select id="aula-prof"></select>
+            <label>Professor(a) *</label>
+            <select id="aula-prof" class="form-select">
+              <option value="">Carregando professores...</option>
+            </select>
 
             <label>Auxiliar</label>
-            <select id="aula-aux"></select>
+            <select id="aula-aux" class="form-select">
+              <option value="Nenhum">Nenhum</option>
+            </select>
 
-            <label>Tema</label>
-            <input id="aula-tema" type="text" placeholder="Ex: A Arca de Noé">
+            <label>Tema *</label>
+            <input id="aula-tema" type="text" placeholder="Ex: A Arca de Noé" class="form-input">
 
             <button id="btn-iniciar-aula" class="btn btn-success">Iniciar aula</button>
           </div>
@@ -491,7 +532,9 @@ const APP = {
         </div>
 
         <div class="between-row" style="gap:10px; margin-top:12px;">
-          <select id="entrada-aluno" style="flex:1;"></select>
+          <select id="entrada-aluno" class="form-select" style="flex:1;">
+            <option value="">Carregando alunos...</option>
+          </select>
           <button id="btn-entrada" class="btn btn-success">Dar entrada</button>
         </div>
 
@@ -499,74 +542,117 @@ const APP = {
       </div>
     `;
 
-    // load equipe + alunos
-    const [equipe, alunos] = await Promise.all([
-      apiFetch("/usuarios").catch(() => ({ ok: true, usuarios: [] })),
-      apiFetch("/alunos").catch(() => ({ ok: true, alunos: [] })),
-    ]);
+    try {
+      this.setLoading("Carregando dados...");
+      
+      const [equipe, alunos] = await Promise.all([
+        apiFetch("/usuarios").catch(err => {
+          console.error("Erro ao carregar equipe:", err);
+          return [];
+        }),
+        apiFetch("/alunos").catch(err => {
+          console.error("Erro ao carregar alunos:", err);
+          return [];
+        })
+      ]);
 
-    const usuarios = equipe?.usuarios || [];
-    const alunosList = alunos?.alunos || [];
+      const usuarios = Array.isArray(equipe) ? equipe : [];
+      const alunosList = Array.isArray(alunos) ? alunos : [];
 
-    const selProf = $("#aula-prof");
-    const selAux = $("#aula-aux");
-    const selEntrada = $("#entrada-aluno");
+      console.log("Usuários carregados:", usuarios.length);
+      console.log("Alunos carregados:", alunosList.length);
 
-    if (selProf) {
-      selProf.innerHTML = usuarios.map(u => `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`).join("") || `<option value="">(Sem equipe cadastrada)</option>`;
-    }
-    if (selAux) {
-      const opts = [`<option value="Nenhum">Nenhum</option>`].concat(
-        usuarios.map(u => `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`)
-      );
-      selAux.innerHTML = opts.join("");
-    }
-    if (selEntrada) {
-      selEntrada.innerHTML = alunosList.map(a => `<option value="${a.id}">${esc(a.nome)}</option>`).join("") || `<option value="">(Sem alunos cadastrados)</option>`;
-    }
+      const selProf = $("#aula-prof");
+      const selAux = $("#aula-aux");
+      const selEntrada = $("#entrada-aluno");
 
-    $("#btn-iniciar-aula")?.addEventListener("click", async () => {
-      const tema = ($("#aula-tema")?.value || "").trim();
-      const professor = selProf?.value || "";
-      const auxiliar = selAux?.value || "Nenhum";
-      if (!tema) return toast("Digite o tema da aula.", "warn");
-
-      try {
-        await apiFetch("/aulas/iniciar", {
-          method: "POST",
-          body: JSON.stringify({ tema, professor, auxiliar })
-        });
-        toast("Aula iniciada ✅", "ok");
-        await this.refreshAulaAtivaUI();
-      } catch (e) {
-        toast(e.message || "Falha ao iniciar aula", "err");
+      if (selProf) {
+        if (usuarios.length === 0) {
+          selProf.innerHTML = '<option value="">Nenhum professor cadastrado</option>';
+        } else {
+          selProf.innerHTML = usuarios.map(u => 
+            `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`
+          ).join('');
+        }
       }
-    });
 
-    $("#btn-entrada")?.addEventListener("click", async () => {
-      const aluno_id = Number(selEntrada?.value || 0);
-      if (!aluno_id) return toast("Selecione um aluno.", "warn");
-      try {
-        await apiFetch("/aulas/entrada", { method: "POST", body: JSON.stringify({ aluno_id }) });
-        toast("Entrada registrada ✅", "ok");
-        await this.refreshAulaAtivaUI();
-      } catch (e) {
-        toast(e.message || "Falha ao dar entrada", "err");
+      if (selAux) {
+        let auxOptions = '<option value="Nenhum">Nenhum</option>';
+        if (usuarios.length > 0) {
+          auxOptions += usuarios.map(u => 
+            `<option value="${esc(u.nome)}">${esc(u.nome)}</option>`
+          ).join('');
+        }
+        selAux.innerHTML = auxOptions;
       }
-    });
 
-    $("#btn-encerrar-aula")?.addEventListener("click", async () => {
-      if (!confirm("Encerrar aula e salvar tudo?")) return;
-      try {
-        await apiFetch("/aulas/encerrar", { method: "POST", body: JSON.stringify({}) });
-        toast("Aula encerrada ✅", "ok");
-        await this.refreshAulaAtivaUI();
-      } catch (e) {
-        toast(e.message || "Falha ao encerrar", "err");
+      if (selEntrada) {
+        if (alunosList.length === 0) {
+          selEntrada.innerHTML = '<option value="">Nenhum aluno cadastrado</option>';
+        } else {
+          selEntrada.innerHTML = alunosList.map(a => 
+            `<option value="${a.id}">${esc(a.nome)}</option>`
+          ).join('');
+        }
       }
-    });
 
-    await this.refreshAulaAtivaUI();
+      $("#btn-iniciar-aula")?.addEventListener("click", async () => {
+        const tema = ($("#aula-tema")?.value || "").trim();
+        const professor = selProf?.value || "";
+        const auxiliar = selAux?.value || "Nenhum";
+        
+        if (!tema) return toast("Digite o tema da aula.", "warn");
+        if (!professor) return toast("Selecione um professor.", "warn");
+
+        try {
+          await apiFetch("/aulas/iniciar", {
+            method: "POST",
+            body: JSON.stringify({ tema, professor, auxiliar })
+          });
+          toast("Aula iniciada ✅", "ok");
+          await this.refreshAulaAtivaUI();
+          $("#aula-tema").value = "";
+        } catch (e) {
+          toast(e.message || "Falha ao iniciar aula", "err");
+        }
+      });
+
+      $("#btn-entrada")?.addEventListener("click", async () => {
+        const aluno_id = Number(selEntrada?.value || 0);
+        if (!aluno_id) return toast("Selecione um aluno.", "warn");
+        
+        try {
+          await apiFetch("/aulas/entrada", { 
+            method: "POST", 
+            body: JSON.stringify({ aluno_id }) 
+          });
+          toast("Entrada registrada ✅", "ok");
+          await this.refreshAulaAtivaUI();
+        } catch (e) {
+          toast(e.message || "Falha ao dar entrada", "err");
+        }
+      });
+
+      $("#btn-encerrar-aula")?.addEventListener("click", async () => {
+        if (!confirm("Encerrar aula e salvar tudo?")) return;
+        try {
+          await apiFetch("/aulas/encerrar", { 
+            method: "POST", 
+            body: JSON.stringify({}) 
+          });
+          toast("Aula encerrada ✅", "ok");
+          await this.refreshAulaAtivaUI();
+        } catch (e) {
+          toast(e.message || "Falha ao encerrar", "err");
+        }
+      });
+
+      await this.refreshAulaAtivaUI();
+      
+    } catch (error) {
+      console.error("Erro ao carregar página de aulas:", error);
+      toast("Erro ao carregar dados", "err");
+    }
   },
 
   async refreshAulaAtivaUI() {
@@ -619,7 +705,6 @@ const APP = {
             `;
           }).join("");
 
-          // bind checkout buttons
           $$("[data-checkout]", list).forEach(btn => {
             btn.addEventListener("click", async () => {
               const fid = Number(btn.getAttribute("data-checkout"));
@@ -638,14 +723,15 @@ const APP = {
 
   async openCheckoutModal(frequenciaId, alunoId) {
     try {
-      // pega autorizados do aluno
-      const aluno = await apiFetch(`/alunos/${alunoId}`).catch(() => null);
-      const a = aluno?.aluno;
+      const alunos = await apiFetch("/alunos").catch(() => []);
+      const aluno = Array.isArray(alunos) ? alunos.find(a => a.id === alunoId) : null;
+      
       const auths = [];
-      if (a?.responsavel) auths.push(a.responsavel);
-      if (a?.autorizado_retirar) auths.push(a.autorizado_retirar);
-      if (a?.autorizado_2) auths.push(a.autorizado_2);
-      if (a?.autorizado_3) auths.push(a.autorizado_3);
+      if (aluno?.responsavel) auths.push(aluno.responsavel);
+      if (aluno?.autorizado_retirar) auths.push(aluno.autorizado_retirar);
+      if (aluno?.autorizado_2) auths.push(aluno.autorizado_2);
+      if (aluno?.autorizado_3) auths.push(aluno.autorizado_3);
+      
       const uniq = [...new Set(auths.map(x => String(x || "").trim()).filter(Boolean))];
       const options = uniq.length ? uniq : ["Responsável (sem nome cadastrado)"];
 
@@ -654,14 +740,14 @@ const APP = {
         body: `
           <div class="form">
             <label>Quem está buscando?</label>
-            <select id="checkout-who">
+            <select id="checkout-who" class="form-select">
               ${options.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}
             </select>
             <div class="hint" style="margin-top:8px;">Isso registra horário de saída e o nome de quem retirou.</div>
           </div>
         `,
         footer: `
-          <button class="btn" data-modal-close>Cancelar</button>
+          <button class="btn btn-outline" data-modal-close>Cancelar</button>
           <button class="btn btn-success" id="btn-confirm-checkout">Confirmar saída</button>
         `
       });
@@ -704,7 +790,6 @@ const APP = {
     `;
 
     $("#btn-recarregar-hist")?.addEventListener("click", () => this.refreshHistoricoList());
-
     await this.refreshHistoricoList();
   },
 
@@ -784,82 +869,6 @@ const APP = {
 
     } catch (e) {
       toast(e.message || "Falha ao abrir detalhes", "err");
-    }
-  },
-
-  /* ---------------- HOME ---------------- */
-  async loadStats() {
-    try {
-      const data = await apiFetch("/estatisticas");
-      const totalAlunos = data.total_alunos ?? data.alunos ?? 0;
-      const totalEquipe = data.total_equipe ?? data.equipe ?? 0;
-
-      if (this.els.statAlunos) this.els.statAlunos.innerText = String(totalAlunos);
-      if (this.els.statEquipe) this.els.statEquipe.innerText = String(totalEquipe);
-
-      // avisos: buscamos a contagem pelo loadAvisos (pra não ficar caro sempre)
-      if (this.els.statAvisos) this.els.statAvisos.innerText = String(this.lastAvisos.length || 0);
-    } catch (e) {
-      console.warn(e);
-      if (this.els.statAlunos) this.els.statAlunos.innerText = "0";
-      if (this.els.statEquipe) this.els.statEquipe.innerText = "0";
-      if (this.els.statAvisos) this.els.statAvisos.innerText = "0";
-      if (e.status === 401) await this.logout();
-    }
-  },
-
-  async loadHomePinned() {
-    if (!this.els.homePinned) return;
-    this.els.homePinned.innerHTML = `<div class="hint">Carregando avisos fixados...</div>`;
-
-    try {
-      const avisos = await apiFetch("/avisos");
-      this.lastAvisos = Array.isArray(avisos) ? avisos : [];
-      const pinned = this.lastAvisos.filter(a => !!a.fixado).slice(0, 6);
-      this.lastPinned = pinned;
-
-      if (this.els.statAvisos) this.els.statAvisos.innerText = String(this.lastAvisos.length);
-
-      if (!pinned.length) {
-        this.els.homePinned.innerHTML = `<div class="hint">Nenhum aviso fixado ainda.</div>`;
-        return;
-      }
-
-      this.els.homePinned.innerHTML = pinned.map(a => `
-        <div class="item">
-          <div class="item-left">
-            <div class="avatar" style="width:42px;height:42px;border-radius:14px;">
-              <i class="fa-solid fa-thumbtack"></i>
-            </div>
-            <div>
-              <div class="item-title">${esc((a.mensagem || "").slice(0, 60) || "Aviso")}</div>
-              <div class="item-sub">
-                ${esc(a.autor || "Equipe")} • ${esc(fmtDate(a.data_criacao))}
-              </div>
-            </div>
-          </div>
-          <div class="item-actions">
-            <span class="tag"><i class="fa-solid fa-heart"></i> ${a.like_count ?? 0}</span>
-            <span class="tag"><i class="fa-solid fa-comment"></i> ${a.comment_count ?? 0}</span>
-            <button class="btn btn-outline" data-open-aviso="${a.id}">
-              Ver
-            </button>
-          </div>
-        </div>
-      `).join("");
-
-      $$(`[data-open-aviso]`, this.els.homePinned).forEach(btn => {
-        btn.addEventListener("click", () => {
-          const id = Number(btn.getAttribute("data-open-aviso"));
-          const aviso = this.lastAvisos.find(x => x.id === id);
-          if (aviso) this.modalAvisoDetalhe(aviso);
-        });
-      });
-
-    } catch (e) {
-      console.error(e);
-      this.els.homePinned.innerHTML = `<div class="hint">Falha ao carregar avisos fixados.</div>`;
-      if (e.status === 401) await this.logout();
     }
   },
 
@@ -987,48 +996,48 @@ const APP = {
         <div class="grid2">
           <div class="field">
             <label>Nome *</label>
-            <input id="al-nome" value="${esc(a?.nome || "")}" placeholder="Nome completo">
+            <input id="al-nome" value="${esc(a?.nome || "")}" placeholder="Nome completo" class="form-input">
           </div>
           <div class="field">
             <label>Nascimento</label>
-            <input id="al-nasc" value="${esc(a?.data_nascimento || "")}" placeholder="dd/mm/aaaa">
+            <input id="al-nasc" value="${esc(a?.data_nascimento || "")}" placeholder="dd/mm/aaaa" class="form-input">
           </div>
         </div>
 
         <div class="grid2" style="margin-top:10px">
           <div class="field">
             <label>Responsável</label>
-            <input id="al-resp" value="${esc(a?.responsavel || "")}" placeholder="Nome do responsável">
+            <input id="al-resp" value="${esc(a?.responsavel || "")}" placeholder="Nome do responsável" class="form-input">
           </div>
           <div class="field">
             <label>Telefone</label>
-            <input id="al-tel" value="${esc(a?.telefone || "")}" placeholder="(xx) xxxxx-xxxx">
+            <input id="al-tel" value="${esc(a?.telefone || "")}" placeholder="(xx) xxxxx-xxxx" class="form-input">
           </div>
         </div>
 
         <div class="grid3" style="margin-top:10px">
           <div class="field">
             <label>Autorizado 1</label>
-            <input id="al-aut1" value="${esc(a?.autorizado_retirar || "")}" placeholder="Nome autorizado">
+            <input id="al-aut1" value="${esc(a?.autorizado_retirar || "")}" placeholder="Nome autorizado" class="form-input">
           </div>
           <div class="field">
             <label>Autorizado 2</label>
-            <input id="al-aut2" value="${esc(a?.autorizado_2 || "")}" placeholder="Nome autorizado">
+            <input id="al-aut2" value="${esc(a?.autorizado_2 || "")}" placeholder="Nome autorizado" class="form-input">
           </div>
           <div class="field">
             <label>Autorizado 3</label>
-            <input id="al-aut3" value="${esc(a?.autorizado_3 || "")}" placeholder="Nome autorizado">
+            <input id="al-aut3" value="${esc(a?.autorizado_3 || "")}" placeholder="Nome autorizado" class="form-input">
           </div>
         </div>
 
         <div class="field" style="margin-top:10px">
           <label>Observações (alergias, cuidados)</label>
-          <textarea id="al-obs" placeholder="Ex: Alergia a amendoim...">${esc(a?.observacoes || "")}</textarea>
+          <textarea id="al-obs" class="form-input" placeholder="Ex: Alergia a amendoim...">${esc(a?.observacoes || "")}</textarea>
         </div>
 
         <div class="field" style="margin-top:10px">
           <label>Foto do aluno</label>
-          <input id="al-foto" type="file" accept="image/*">
+          <input id="al-foto" type="file" accept="image/*" class="form-input">
           <div class="preview" style="margin-top:10px">
             <div class="avatar" id="al-prev">
               ${a?.foto ? b64ImgTag(a.foto, a.nome) : `<i class="fa-solid fa-camera"></i>`}
@@ -1189,18 +1198,18 @@ const APP = {
         <div class="grid2">
           <div class="field">
             <label>Nome *</label>
-            <input id="us-nome" value="${esc(u?.nome || "")}" placeholder="Nome completo">
+            <input id="us-nome" value="${esc(u?.nome || "")}" placeholder="Nome completo" class="form-input">
           </div>
           <div class="field">
             <label>Usuário (login) *</label>
-            <input id="us-user" value="${esc(u?.usuario || "")}" placeholder="ex: joao">
+            <input id="us-user" value="${esc(u?.usuario || "")}" placeholder="ex: joao" class="form-input">
           </div>
         </div>
 
         <div class="grid2" style="margin-top:10px">
           <div class="field">
             <label>Função</label>
-            <select id="us-role">
+            <select id="us-role" class="form-select">
               <option value="membro">membro</option>
               <option value="professor">professor</option>
               <option value="auxiliar">auxiliar</option>
@@ -1209,24 +1218,24 @@ const APP = {
           </div>
           <div class="field">
             <label>Senha ${isEdit ? "(deixe vazio para manter)" : "*"}</label>
-            <input id="us-pass" type="password" placeholder="${isEdit ? "•••••• (não altera)" : "Defina uma senha"}">
+            <input id="us-pass" type="password" placeholder="${isEdit ? "•••••• (não altera)" : "Defina uma senha"}" class="form-input">
           </div>
         </div>
 
         <div class="grid2" style="margin-top:10px">
           <div class="field">
             <label>Telefone</label>
-            <input id="us-tel" value="${esc(u?.telefone || "")}" placeholder="(xx) xxxxx-xxxx">
+            <input id="us-tel" value="${esc(u?.telefone || "")}" placeholder="(xx) xxxxx-xxxx" class="form-input">
           </div>
           <div class="field">
             <label>Email</label>
-            <input id="us-email" value="${esc(u?.email || "")}" placeholder="email@exemplo.com">
+            <input id="us-email" value="${esc(u?.email || "")}" placeholder="email@exemplo.com" class="form-input">
           </div>
         </div>
 
         <div class="field" style="margin-top:10px">
           <label>Foto</label>
-          <input id="us-foto" type="file" accept="image/*">
+          <input id="us-foto" type="file" accept="image/*" class="form-input">
           <div class="preview" style="margin-top:10px">
             <div class="avatar" id="us-prev">
               ${u?.foto ? b64ImgTag(u.foto, u.nome) : `<i class="fa-solid fa-camera"></i>`}
@@ -1369,7 +1378,6 @@ const APP = {
         </div>
       `).join("");
 
-      // bind fixar/excluir/like/open
       $$(`[data-fixar]`, this.els.listAvisos).forEach(b => {
         b.addEventListener("click", async () => {
           const id = Number(b.getAttribute("data-fixar"));
@@ -1421,12 +1429,12 @@ const APP = {
       bodyHTML: `
         <div class="field">
           <label>Mensagem</label>
-          <textarea id="av-msg" placeholder="Escreva o aviso..."></textarea>
+          <textarea id="av-msg" class="form-input" placeholder="Escreva o aviso..."></textarea>
         </div>
 
         <div class="field" style="margin-top:10px">
           <label>Imagem (opcional)</label>
-          <input id="av-img" type="file" accept="image/*">
+          <input id="av-img" type="file" accept="image/*" class="form-input">
           <div class="preview" style="margin-top:10px">
             <div class="avatar" id="av-prev" style="width:56px;height:56px;border-radius:14px">
               <i class="fa-solid fa-image"></i>
@@ -1550,7 +1558,7 @@ const APP = {
 
           <div class="field" style="margin-top:10px">
             <label>Adicionar comentário</label>
-            <input id="det-text" placeholder="Escreva um comentário...">
+            <input id="det-text" class="form-input" placeholder="Escreva um comentário...">
           </div>
         </div>
       `,
@@ -1620,7 +1628,6 @@ const APP = {
     });
     $("#det-like")?.addEventListener("click", async () => {
       await this.toggleLike(aviso.id);
-      // recarrega detalhes pelo mural
       const novo = this.lastAvisos.find(x => x.id === aviso.id) || aviso;
       this.modalAvisoDetalhe(novo);
     });
@@ -1687,12 +1694,9 @@ const APP = {
   }
 };
 
-/* expose for inline onclicks in HTML */
 window.APP = APP;
 
-/* start */
 document.addEventListener("DOMContentLoaded", () => {
-  // registra SW sem travar
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
