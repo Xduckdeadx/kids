@@ -1,5 +1,5 @@
-/* Kid IEQ 2025 - sw.js (v4 - força atualizar cache) */
-const CACHE = "kid-ieq-cache-v4";
+/* Kid IEQ 2025 - sw.js (v5 - força atualizar cache) */
+const CACHE = "kid-ieq-cache-v5";
 
 const ASSETS = [
   "/",
